@@ -1,0 +1,11 @@
+[requires]
+ffmpeg/7.1.1
+ninja/1.13.1
+
+[options]
+ffmpeg/*:with_opus=False
+ffmpeg/*:shared=True
+
+[generators]
+CMakeDeps
+CMakeToolchain
