@@ -15,6 +15,8 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
 # Set the translation files path
 set(TS_FILES resource/lang/BilibiliPlayer_zh_CN.ts)
 
+# Add the demo subdirectory
+add_subdirectory(demo)
 # Add the src subdirectory
 add_subdirectory(src)
 
