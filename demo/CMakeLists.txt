@@ -13,10 +13,6 @@ find_package(ffmpeg REQUIRED)
 find_package(JsonCpp REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-set(HTTP_DEMO_SOURCES
-    src/http_demo.cpp
-)
-
 set(SIMPLE_WAV_TEST_SOURCES
     test/simple_wav_test.cpp
     src/ffmpeg_decoder.cpp
@@ -32,12 +28,9 @@ set(BILI_STREAM_TEST_SOURCES
 )
 
 # Create executables
-add_executable(HttpDemo ${HTTP_DEMO_SOURCES})
 add_executable(SimpleWavTest ${SIMPLE_WAV_TEST_SOURCES})
 add_executable(BiliStreamTest ${BILI_STREAM_TEST_SOURCES})
 
-# Link libraries
-target_link_libraries(HttpDemo PRIVATE httplib::httplib)
 
 target_link_libraries(SimpleWavTest PRIVATE 
     ffmpeg::ffmpeg
