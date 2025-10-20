@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include <stdexcept>
+
 template <typename T>
 class CircularBuffer {
 public:
@@ -14,6 +16,15 @@ public:
             ++size_;
         }
     }
+    
+    // Alias for push to match expected interface
+    bool write(const T& item) {
+        if (isFull()) {
+            return false;
+        }
+        push(item);
+        return true;
+    }
 
     T pop() {
         if (size_ == 0) {
@@ -24,8 +35,22 @@ public:
         --size_;
         return item;
     }
+    
+    // Alias for pop to match expected interface
+    bool read(T& item) {
+        if (isEmpty()) {
+            return false;
+        }
+        item = pop();
+        return true;
+    }
 
     size_t size() const {
+        return size_;
+    }
+    
+    // Alias for size to match expected interface
+    size_t available() const {
         return size_;
     }
 
@@ -35,6 +60,11 @@ public:
 
     bool isFull() const {
         return size_ == capacity_;
+    }
+    
+    void clear() {
+        head_ = 0;
+        size_ = 0;
     }
 private:
     size_t capacity_;

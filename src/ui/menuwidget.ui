@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MenuWidget</class>
+ <widget class="QWidget" name="MenuWidget">
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget#MenuWidget {
+    background-color: #353535;
+    border-right: 1px solid #1a1a1a;
+}
+
+QListWidget {
+    background-color: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+}
+
+QListWidget::item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #2a2a2a;
+    background-color: transparent;
+}
+
+QListWidget::item:hover {
+    background-color: #404040;
+}
+
+QListWidget::item:selected {
+    background-color: #3498db;
+    color: #ffffff;
+}
+
+QLabel#menuTitle {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 15px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #1a1a1a;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QListWidget" name="menuList">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <item>
+      <property name="text">
+       <string>🏠 主页</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>🎵 音频播放</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>🎬 视频播放</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>📁 本地文件</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>📂 收藏夹</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>📜 播放历史</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>⬇️ 下载管理</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>⚙️ 设置</string>
+      </property>
+     </item>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

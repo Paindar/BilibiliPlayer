@@ -1,10 +1,42 @@
-# Source files for BilibiliPlayer
+# Source files for BilibiliPlayer organized by components
 set(PROJECT_SOURCES
+    # Main application
     main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
+    
+    # UI components
+    ui/mainwindow.cpp
+    ui/mainwindow.h
+    ui/mainwindow.ui
+    ui/customtitlebar.cpp
+    ui/customtitlebar.h
+    ui/customtitlebar.ui
+    ui/menuwidget.cpp
+    ui/menuwidget.h
+    ui/menuwidget.ui
+    
+    # Network components
+    network/bili_network_interface.cpp
+    network/bili_network_interface.h
+    
+    # Audio components
+    audio/ffmpeg_decoder.cpp
+    audio/ffmpeg_decoder.h
+    audio/wasapi_audio_player.cpp
+    audio/wasapi_audio_player.h
+    
+    # Streaming components
+    stream/streaming_audio_buffer.cpp
+    stream/streaming_audio_buffer.h
+    
+    # Utility components
+    util/circular_buffer.hpp
 )
+
+# Find required dependencies
+find_package(httplib REQUIRED)
+find_package(ffmpeg REQUIRED)
+find_package(JsonCpp REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 # Create the executable
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -30,8 +62,28 @@ else()
     endif()
 endif()
 
-# Link Qt libraries
-target_link_libraries(BilibiliPlayer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+# Link Qt libraries and external dependencies
+target_link_libraries(BilibiliPlayer PRIVATE 
+    Qt${QT_VERSION_MAJOR}::Widgets
+    httplib::httplib
+    ffmpeg::ffmpeg
+    JsonCpp::JsonCpp
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    # Windows-specific libraries for WASAPI
+    ole32
+    oleaut32
+)
+
+# Add include directories for organized header structure
+target_include_directories(BilibiliPlayer PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/network
+    ${CMAKE_CURRENT_SOURCE_DIR}/stream
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/util
+)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
