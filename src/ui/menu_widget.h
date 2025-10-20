@@ -15,6 +15,8 @@ public:
     explicit MenuWidget(QWidget *parent = nullptr);
     ~MenuWidget();
 
+    void selectItem(int index);
+
 signals:
     void menuItemSelected(int index, const QString& itemText);
 

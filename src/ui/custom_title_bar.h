@@ -23,6 +23,7 @@ signals:
     void minimizeClicked();
     void maximizeClicked();
     void closeClicked();
+    void searchRequested(const QString& searchText);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -33,6 +34,7 @@ private slots:
     void onMinimizeClicked();
     void onMaximizeClicked();
     void onCloseClicked();
+    void onSearchSubmitted();
 
 private:
     Ui_CustomTitleBar *ui;

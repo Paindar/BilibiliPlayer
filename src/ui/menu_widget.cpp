@@ -1,5 +1,5 @@
-#include "menuwidget.h"
-#include "ui_menuwidget.h"
+#include "menu_widget.h"
+#include "ui_menu_widget.h"
 #include <QListWidgetItem>
 
 MenuWidget::MenuWidget(QWidget *parent)
@@ -20,6 +20,17 @@ MenuWidget::MenuWidget(QWidget *parent)
 MenuWidget::~MenuWidget()
 {
     delete ui;
+}
+
+void MenuWidget::selectItem(int index)
+{
+    if (index >= 0 && index < ui->menuList->count()) {
+        ui->menuList->setCurrentRow(index);
+        QListWidgetItem* item = ui->menuList->item(index);
+        if (item) {
+            emit menuItemSelected(index, item->text());
+        }
+    }
 }
 
 void MenuWidget::onItemClicked(QListWidgetItem* item)

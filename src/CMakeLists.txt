@@ -4,15 +4,25 @@ set(PROJECT_SOURCES
     main.cpp
     
     # UI components
-    ui/mainwindow.cpp
-    ui/mainwindow.h
-    ui/mainwindow.ui
-    ui/customtitlebar.cpp
-    ui/customtitlebar.h
-    ui/customtitlebar.ui
-    ui/menuwidget.cpp
-    ui/menuwidget.h
-    ui/menuwidget.ui
+    ui/main_window.cpp
+    ui/main_window.h
+    ui/main_window.ui
+    ui/custom_title_bar.cpp
+    ui/custom_title_bar.h
+    ui/custom_title_bar.ui
+    ui/menu_widget.cpp
+    ui/menu_widget.h
+    ui/menu_widget.ui
+
+    # UI navigation components
+    ui/navigator/i_navigable_page.h
+    ui/navigator/navigator.cpp
+    ui/navigator/navigator.h
+
+    # UI pages
+    ui/page/search_page.cpp
+    ui/page/search_page.h
+    ui/page/search_page.ui
     
     # Network components
     network/bili_network_interface.cpp

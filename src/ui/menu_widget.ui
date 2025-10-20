@@ -75,6 +75,11 @@ QLabel#menuTitle {
      </property>
      <item>
       <property name="text">
+       <string>🔍 搜索</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
        <string>🏠 主页</string>
       </property>
      </item>

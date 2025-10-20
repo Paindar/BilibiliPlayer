@@ -1,5 +1,5 @@
-#include "customtitlebar.h"
-#include "ui_customtitlebar.h"
+#include "custom_title_bar.h"
+#include "ui_custom_title_bar.h"
 #include <QApplication>
 
 CustomTitleBar::CustomTitleBar(QWidget *parent)
@@ -13,6 +13,9 @@ CustomTitleBar::CustomTitleBar(QWidget *parent)
     connect(ui->minimizeButton, &QPushButton::clicked, this, &CustomTitleBar::onMinimizeClicked);
     connect(ui->maximizeButton, &QPushButton::clicked, this, &CustomTitleBar::onMaximizeClicked);
     connect(ui->closeButton, &QPushButton::clicked, this, &CustomTitleBar::onCloseClicked);
+    
+    // Connect search input signal
+    connect(ui->searchInput, &QLineEdit::returnPressed, this, &CustomTitleBar::onSearchSubmitted);
 }
 
 CustomTitleBar::~CustomTitleBar()
@@ -68,4 +71,13 @@ void CustomTitleBar::onMaximizeClicked()
 void CustomTitleBar::onCloseClicked()
 {
     emit closeClicked();
+}
+
+void CustomTitleBar::onSearchSubmitted()
+{
+    QString searchText = ui->searchInput->text().trimmed();
+    if (!searchText.isEmpty()) {
+        emit searchRequested(searchText);
+        ui->searchInput->clear();
+    }
 }
