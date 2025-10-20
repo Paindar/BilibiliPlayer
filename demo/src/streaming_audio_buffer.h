@@ -1,6 +1,6 @@
 #pragma once
 
-#include "util/circular_buffer.hpp"
+#include "circular_buffer.hpp"
 #include <istream>
 #include <vector>
 #include <mutex>
