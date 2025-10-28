@@ -5,9 +5,11 @@
 #include "navigator/i_navigable_page.h"
 #include "navigator/navigator.h"
 #include "page/search_page.h"
+#include "page/playlist_page.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include "page/settings_page.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -46,6 +48,7 @@ void MainWindow::setupCustomComponents()
     
     // Create and setup menu widget
     m_menuWidget = new MenuWidget(this);
+    connect(m_menuWidget, &MenuWidget::menuItemSelected, this, &MainWindow::onMenuItemSelected);
     ui->menuContainerLayout->addWidget(m_menuWidget);
 }
 
@@ -56,9 +59,16 @@ void MainWindow::setupNavigator()
     m_navigator->registerPageFactory(SearchPage::SEARCH_PAGE_TYPE, [this]() {
         return new SearchPage(this);
     });
+    
+    m_navigator->registerPageFactory(PlaylistPage::PLAYLIST_PAGE_TYPE, [this]() {
+        return new PlaylistPage(this);
+    });
+    m_navigator->registerPageFactory(SettingsPage::SETTINGS_PAGE_TYPE, [this]() {
+        return new SettingsPage(this);
+    });
 
     connect(m_navigator, &Navigator::afterPageChange, this, &MainWindow::onPageChanged);
-    m_navigator->navigateTo(SearchPage::SEARCH_PAGE_TYPE);
+    m_navigator->navigateTo(PlaylistPage::PLAYLIST_PAGE_TYPE);
 }
 
 void MainWindow::onMinimizeClicked()
@@ -83,8 +93,8 @@ void MainWindow::onCloseClicked()
 void MainWindow::onSearchRequested(const QString& searchText)
 {
     // Navigate to search page and set search text
-    m_navigator->navigateTo(SearchPage::SEARCH_PAGE_TYPE, QString("query=%1").arg(searchText));
-    m_menuWidget->selectItem(0); // Select the search menu item
+    m_menuWidget->selectItem(SearchPage::SEARCH_PAGE_TYPE); // Select the search menu item
+    m_navigator->navigateTo(SearchPage::SEARCH_PAGE_TYPE, QString("query=%0").arg(searchText));
 }
 
 void MainWindow::onPageChanged(INavigablePage *page)
@@ -105,4 +115,9 @@ void MainWindow::onPageChanged(INavigablePage *page)
     
     // Let Navigator delete oldPage after this method returns
     // (Navigator should delete oldPage safely)
+}
+
+void MainWindow::onMenuItemSelected(const QString& itemId, const QString& itemText, const QString& args)
+{
+    m_navigator->navigateTo(itemId, args);
 }

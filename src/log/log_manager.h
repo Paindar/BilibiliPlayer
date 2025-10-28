@@ -1,0 +1,101 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <fmt/format.h>
+
+/**
+ * Log Manager - centralized logging using spdlog
+ * Handles all application logging with different levels and outputs
+ */
+class LogManager
+{
+public:
+    enum class LogLevel {
+        Trace = 0,
+        Debug = 1,
+        Info = 2,
+        Warn = 3,
+        Error = 4,
+        Critical = 5
+    };
+
+    static LogManager& instance();
+    
+    // Initialize logging system
+    void initialize(const std::string& logDirectory = "log");
+    void shutdown();
+    
+    // Logging methods
+    template<typename... Args>
+    void trace(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->trace(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    template<typename... Args>
+    void debug(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->debug(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    template<typename... Args>
+    void info(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->info(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    template<typename... Args>
+    void warn(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->warn(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    template<typename... Args>
+    void error(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->error(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    template<typename... Args>
+    void critical(const std::string& format, Args&&... args) {
+        if (m_logger) {
+            m_logger->critical(fmt::format(format, std::forward<Args>(args)...));
+        }
+    }
+    
+    // Log level management
+    void setLogLevel(LogLevel level);
+    LogLevel getLogLevel() const;
+    
+    // File management
+    void flush();
+    void setRotationSize(size_t maxFileSize);
+    void setMaxFiles(size_t maxFiles);
+    
+private:
+    LogManager() = default;
+    ~LogManager() = default;
+    LogManager(const LogManager&) = delete;
+    LogManager& operator=(const LogManager&) = delete;
+    
+    std::shared_ptr<spdlog::logger> m_logger;
+    std::string m_logDirectory;
+    bool m_initialized = false;
+};
+
+// Convenience macros for easy logging
+#define LOG_TRACE(...) LogManager::instance().trace(__VA_ARGS__)
+#define LOG_DEBUG(...) LogManager::instance().debug(__VA_ARGS__)
+#define LOG_INFO(...) LogManager::instance().info(__VA_ARGS__)
+#define LOG_WARN(...) LogManager::instance().warn(__VA_ARGS__)
+#define LOG_ERROR(...) LogManager::instance().error(__VA_ARGS__)
+#define LOG_CRITICAL(...) LogManager::instance().critical(__VA_ARGS__)

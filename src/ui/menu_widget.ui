@@ -17,7 +17,7 @@
     border-right: 1px solid #1a1a1a;
 }
 
-QListWidget {
+QTreeWidget {
     background-color: transparent;
     border: none;
     color: #ffffff;
@@ -25,19 +25,53 @@ QListWidget {
     outline: none;
 }
 
-QListWidget::item {
-    padding: 12px 15px;
+QTreeWidget::item {
+    padding: 8px 15px;
     border-bottom: 1px solid #2a2a2a;
     background-color: transparent;
+    min-height: 20px;
 }
 
-QListWidget::item:hover {
+QTreeWidget::item:hover {
     background-color: #404040;
 }
 
-QListWidget::item:selected {
+<!-- QTreeWidget::item:selected {
     background-color: #3498db;
     color: #ffffff;
+} -->
+
+<!-- QTreeWidget::item:has-children {
+    font-weight: bold;
+    background-color: #2d2d2d;
+} -->
+
+<!-- QTreeWidget::item:has-children:hover {
+    background-color: #404040;
+} -->
+
+QTreeWidget::item:!has-children {
+    padding-left: 30px;
+    font-weight: normal;
+}
+
+QTreeWidget::branch {
+    background-color: transparent;
+    width: 20px;
+}
+
+QTreeWidget::branch:has-children:!has-siblings:closed,
+QTreeWidget::branch:closed:has-children:has-siblings {
+    image: url(:/icons/arrow_right.png);
+    width: 12px;
+    height: 12px;
+}
+
+QTreeWidget::branch:open:has-children:!has-siblings,
+QTreeWidget::branch:open:has-children:has-siblings {
+    image: url(:/icons/arrow_down.png);
+    width: 12px;
+    height: 12px;
 }
 
 QLabel#menuTitle {
@@ -66,58 +100,28 @@ QLabel#menuTitle {
     <number>0</number>
    </property>
    <item>
-    <widget class="QListWidget" name="menuList">
+    <widget class="QTreeWidget" name="menuTree">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
      </property>
-     <item>
-      <property name="text">
-       <string>🔍 搜索</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>🏠 主页</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>🎵 音频播放</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>🎬 视频播放</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>📁 本地文件</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>📂 收藏夹</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>📜 播放历史</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>⬇️ 下载管理</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>⚙️ 设置</string>
-      </property>
-     </item>
+     <property name="rootIsDecorated">
+      <bool>true</bool>
+     </property>
+     <property name="uniformRowHeights">
+      <bool>true</bool>
+     </property>
+     <property name="headerHidden">
+      <bool>true</bool>
+     </property>
+     <property name="expandsOnDoubleClick">
+      <bool>false</bool>
+     </property>
+     <property name="animated">
+      <bool>true</bool>
+     </property>
     </widget>
    </item>
   </layout>

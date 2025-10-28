@@ -1,0 +1,79 @@
+#pragma once
+
+#include <QObject>
+#include <memory>
+#include <functional>
+
+// Forward declarations
+class PlaylistManager;
+class ConfigManager;
+
+// Network namespace forward declaration
+namespace network {
+    class NetworkManager;
+}
+
+/**
+ * Central application context that holds all global managers
+ * Provides controlled access to shared services with proper initialization order
+ */
+class ApplicationContext : public QObject
+{
+    Q_OBJECT
+    
+public:
+    static ApplicationContext& instance();
+    
+    // Initialize all managers with proper dependency order (call once in main.cpp or MainWindow)
+    void initialize(const QString& workspaceDir = "");
+    
+    // Step-by-step initialization for complex scenarios
+    void initializePhase1(const QString& workspaceDir); // Core managers (Config)
+    void initializePhase2(); // Network-dependent managers
+    void initializePhase3(); // Data managers (Playlist, etc.)
+    
+    // Manager access (returns nullptr if not yet initialized)
+    PlaylistManager* playlistManager() const { return m_playlistManager.get(); }
+    ConfigManager* configManager() const { return m_configManager.get(); }
+    // NetworkManager uses singleton pattern - access via NetworkManager::instance()
+    
+    // Check initialization status
+    bool isInitialized() const { return m_initialized; }
+    bool isPhaseInitialized(int phase) const;
+    
+    // Cleanup
+    void shutdown();
+    
+signals:
+    void managersInitialized();
+    void phaseInitialized(int phase);
+    void configLoaded();
+    void networkReady();
+    void dataManagersReady();
+    
+private:
+    explicit ApplicationContext(QObject* parent = nullptr);
+    ~ApplicationContext();
+    Q_DISABLE_COPY(ApplicationContext)
+    
+    // Phase-based initialization
+    void initializeConfigManager(const QString& workspaceDir);
+    void initializeNetworkManager();
+    void initializePlaylistManager();
+    
+    // Cross-manager connections
+    void setupManagerConnections();
+    
+    // Smart pointers for automatic cleanup
+    std::unique_ptr<ConfigManager> m_configManager;
+    std::unique_ptr<PlaylistManager> m_playlistManager;
+    
+    bool m_initialized = false;
+    int m_currentPhase = 0;
+};
+
+// Convenience macros for easy access
+#define APP_CONTEXT ApplicationContext::instance()
+#define PLAYLIST_MANAGER APP_CONTEXT.playlistManager()
+#define CONFIG_MANAGER APP_CONTEXT.configManager()
+#define NETWORK_MANAGER network::NetworkManager::instance()

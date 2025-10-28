@@ -12,6 +12,7 @@ QT_END_NAMESPACE
 class CustomTitleBar;
 class MenuWidget;
 class SearchPage;
+class PlaylistPage;
 class INavigablePage;
 class Navigator;
 
@@ -29,6 +30,7 @@ private slots:
     void onCloseClicked();
     void onSearchRequested(const QString& searchText);
     void onPageChanged(INavigablePage* page);
+    void onMenuItemSelected(const QString& itemId, const QString& itemText, const QString& args);
 
 private:
     void setupCustomComponents();

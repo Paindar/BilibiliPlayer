@@ -23,10 +23,18 @@ set(PROJECT_SOURCES
     ui/page/search_page.cpp
     ui/page/search_page.h
     ui/page/search_page.ui
+    ui/page/playlist_page.cpp
+    ui/page/playlist_page.h
+    ui/page/playlist_page.ui
+    ui/page/settings_page.cpp
+    ui/page/settings_page.h
+    ui/page/settings_page.ui
     
     # Network components
     network/bili_network_interface.cpp
     network/bili_network_interface.h
+    network/network_manager.cpp
+    network/network_manager.h
     
     # Audio components
     audio/ffmpeg_decoder.cpp
@@ -38,6 +46,22 @@ set(PROJECT_SOURCES
     stream/streaming_audio_buffer.cpp
     stream/streaming_audio_buffer.h
     
+    # Manager components
+    manager/application_context.cpp
+    manager/application_context.h
+    
+    # Configuration management
+    config/config_manager.cpp
+    config/config_manager.h
+    
+    # Playlist management
+    playlist/playlist_manager.cpp
+    playlist/playlist_manager.h
+    
+    # Logging system
+    log/log_manager.cpp
+    log/log_manager.h
+
     # Utility components
     util/circular_buffer.hpp
 )
@@ -47,6 +71,8 @@ find_package(httplib REQUIRED)
 find_package(ffmpeg REQUIRED)
 find_package(JsonCpp REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(fmt REQUIRED)
 
 # Create the executable
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -75,11 +101,14 @@ endif()
 # Link Qt libraries and external dependencies
 target_link_libraries(BilibiliPlayer PRIVATE 
     Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Concurrent
     httplib::httplib
     ffmpeg::ffmpeg
     JsonCpp::JsonCpp
     OpenSSL::SSL
     OpenSSL::Crypto
+    spdlog::spdlog
+    fmt::fmt
     # Windows-specific libraries for WASAPI
     ole32
     oleaut32

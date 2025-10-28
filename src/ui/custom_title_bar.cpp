@@ -78,6 +78,6 @@ void CustomTitleBar::onSearchSubmitted()
     QString searchText = ui->searchInput->text().trimmed();
     if (!searchText.isEmpty()) {
         emit searchRequested(searchText);
-        ui->searchInput->clear();
+        // ui->searchInput->clear();
     }
 }

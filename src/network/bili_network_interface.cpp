@@ -16,6 +16,8 @@ static const std::vector<int> mixinKeyEncTab = {
     36, 20, 34, 44, 52
 };
 
+using namespace network;
+
 BilibiliNetworkInterface::BilibiliNetworkInterface() 
     : timeout_seconds_(10)
     , follow_location_(true)
@@ -225,6 +227,7 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
     std::unordered_map<std::string, std::string> params = {
         {"search_type", "video"},
         {"keyword", title},
+        {"order", "totalrank"},
         {"page", std::to_string(page)}
     };
     

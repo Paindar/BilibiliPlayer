@@ -10,18 +10,85 @@
     background-color: #404040;
 }
 
-QLabel {
+QLineEdit#searchInput {
+    background-color: #555555;
+    border: 2px solid #666666;
+    border-radius: 8px;
     color: #ffffff;
-    font-size: 16px;
+    padding: 8px 12px;
+    font-size: 14px;
 }
 
-QLabel#searchLabel {
-    color: #3498db;
-    font-size: 18px;
+QLineEdit#searchInput:focus {
+    border: 2px solid #3498db;
+    background-color: #606060;
+}
+
+QPushButton#searchButton {
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 14px;
     font-weight: bold;
+    padding: 10px 20px;
+}
+
+QPushButton#searchButton:hover {
+    background-color: #2980b9;
+}
+
+QPushButton#searchButton:pressed {
+    background-color: #21618c;
+}
+
+QPushButton#scopeButton {
+    background-color: #606060;
+    border: 1px solid #777777;
+    border-radius: 4px;
+    color: #ffffff;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+QPushButton#scopeButton:hover {
+    background-color: #707070;
+}
+
+QListWidget#resultsList {
+    background-color: #505050;
+    border: 1px solid #666666;
+    color: #ffffff;
+    font-size: 14px;
+    outline: none;
+}
+
+QListWidget#resultsList::item {
+    padding: 12px;
+    border-bottom: 1px solid #666666;
+    background-color: transparent;
+}
+
+QListWidget#resultsList::item:hover {
+    background-color: #606060;
+}
+
+QListWidget#resultsList::item:selected {
+    background-color: #3498db;
+}
+
+QFrame#separatorLine {
+    background-color: #666666;
+    border: none;
+}
+
+QLabel#emptyResultLabel {
+    color: #999999;
+    font-size: 16px;
+    font-style: italic;
 }</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout">
+  <layout class="QVBoxLayout" name="mainLayout">
    <property name="leftMargin">
     <number>20</number>
    </property>
@@ -34,51 +101,184 @@ QLabel#searchLabel {
    <property name="bottomMargin">
     <number>20</number>
    </property>
+   <property name="spacing">
+    <number>15</number>
+   </property>
    <item>
-    <widget class="QLabel" name="searchLabel">
-     <property name="text">
-      <string>搜索页面</string>
+    <layout class="QHBoxLayout" name="searchLayout">
+     <property name="spacing">
+      <number>10</number>
      </property>
-     <property name="alignment">
-      <set>Qt::AlignCenter</set>
+     <item>
+      <spacer name="leftSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="searchInput">
+       <property name="minimumSize">
+        <size>
+         <width>400</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>600</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="placeholderText">
+        <string>请输入搜索关键词...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="scopeButton">
+       <property name="minimumSize">
+        <size>
+         <width>30</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>30</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>⚙</string>
+       </property>
+       <property name="toolTip">
+        <string>搜索范围设置</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="searchButton">
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>搜索</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="rightSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="separatorLine">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>2</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>2</height>
+      </size>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::HLine</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Plain</enum>
      </property>
     </widget>
    </item>
    <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
+    <widget class="QStackedWidget" name="contentStack">
+     <property name="currentIndex">
+      <number>0</number>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <widget class="QLabel" name="placeholderLabel">
-     <property name="text">
-      <string>搜索功能页面内容待实现...</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignCenter</set>
-     </property>
+     <widget class="QWidget" name="emptyPage">
+      <layout class="QVBoxLayout" name="emptyLayout">
+       <item>
+        <spacer name="topSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="emptyResultLabel">
+         <property name="text">
+          <string>请输入关键词开始搜索</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="bottomSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="resultsPage">
+      <layout class="QVBoxLayout" name="resultsLayout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QListWidget" name="resultsList">
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer_2">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
    </item>
   </layout>
  </widget>
