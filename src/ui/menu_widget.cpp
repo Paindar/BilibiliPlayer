@@ -59,6 +59,20 @@ MenuWidget::MenuWidget(QWidget *parent)
     // Connect hover events for playlist button
     connect(ui->menuTree, &QTreeWidget::itemEntered, this, &MenuWidget::onTreeItemEntered);
     ui->menuTree->setMouseTracking(true);
+    
+    // Connect to PlaylistManager signals
+    if (PLAYLIST_MANAGER) {
+        connect(PLAYLIST_MANAGER, &PlaylistManager::categoriesLoaded, this, &MenuWidget::onCategoriesLoaded);
+        connect(PLAYLIST_MANAGER, &PlaylistManager::categoryAdded, this, &MenuWidget::onCategoryAdded);
+        
+        // Check if categories are already loaded (PlaylistManager initialized before UI)
+        // Use QTimer::singleShot to ensure this runs after constructor completes
+        QTimer::singleShot(0, this, [this]() {
+            if (PLAYLIST_MANAGER) {
+                updateCategories();
+            }
+        });
+    }
 }
 
 MenuWidget::~MenuWidget()
@@ -110,7 +124,8 @@ void MenuWidget::addPlaylist(const MenuPlaylistInfo& playlist)
         return;
     }
     
-    QTreeWidgetItem* playlistItem = createPlaylistItem(playlist);
+    QUuid playlistUuid = QUuid::createUuid(); // Generate UUID for this playlist
+    QTreeWidgetItem* playlistItem = createPlaylistItem(playlist, playlistUuid);
     m_playlistCategory->addChild(playlistItem);
     
     // Update playlist count in category
@@ -143,7 +158,7 @@ void MenuWidget::updatePlaylist(const MenuPlaylistInfo& playlist)
     if (item) {
         item->setText(0, QString("%1 (%2 songs)").arg(playlist.name).arg(playlist.songCount));
         item->setToolTip(0, playlist.description);
-        item->setData(0, Qt::UserRole + 1, QVariant::fromValue(playlist));
+        // UUID remains unchanged at Qt::UserRole + 1
     }
 }
 
@@ -159,7 +174,8 @@ void MenuWidget::setupMenuItems()
     ui->menuTree->addTopLevelItem(searchItem);
     
     // Create Playlists category
-    m_playlistCategory = createCategoryItem("🎵Playlists", PlaylistPage::PLAYLIST_PAGE_TYPE);
+    QUuid playlistCategoryUuid = QUuid::createUuid(); // Special UUID for the main playlists category
+    m_playlistCategory = createCategoryItem("🎵Playlists", PlaylistPage::PLAYLIST_PAGE_TYPE, playlistCategoryUuid);
     m_playlistCategory->setIcon(0, QIcon(":/icons/playlist.png"));
     ui->menuTree->addTopLevelItem(m_playlistCategory);
 
@@ -228,11 +244,12 @@ void MenuWidget::setupMenuItems()
     }
 }
 
-QTreeWidgetItem* MenuWidget::createCategoryItem(const QString& name, const QString& args)
+QTreeWidgetItem* MenuWidget::createCategoryItem(const QString& name, const QString& itemId, const QUuid& uuid)
 {
     QTreeWidgetItem* item = new QTreeWidgetItem();
     item->setText(0, name);
-    item->setData(0, Qt::UserRole, args);
+    item->setData(0, Qt::UserRole, itemId);
+    item->setData(0, Qt::UserRole + 1, uuid);
     item->setData(0, Qt::UserRole + 2, static_cast<int>(CategoryItem));
     
     // Style category items
@@ -243,13 +260,13 @@ QTreeWidgetItem* MenuWidget::createCategoryItem(const QString& name, const QStri
     return item;
 }
 
-QTreeWidgetItem* MenuWidget::createPlaylistItem(const MenuPlaylistInfo& playlist)
+QTreeWidgetItem* MenuWidget::createPlaylistItem(const MenuPlaylistInfo& playlist, const QUuid& uuid)
 {
     QTreeWidgetItem* item = new QTreeWidgetItem();
     item->setText(0, QString("%1 (%2 songs)").arg(playlist.name).arg(playlist.songCount));
     item->setToolTip(0, playlist.description);
     item->setData(0, Qt::UserRole, playlist.id);
-    item->setData(0, Qt::UserRole + 1, QVariant::fromValue(playlist));
+    item->setData(0, Qt::UserRole + 1, uuid);
     item->setData(0, Qt::UserRole + 2, static_cast<int>(PlaylistItem));
     item->setIcon(0, QIcon(":/icons/playlist_item.png"));
     
@@ -298,8 +315,15 @@ void MenuWidget::onItemClicked(QTreeWidgetItem* item, int column)
             break;
             
         case PlaylistItem: {
-            MenuPlaylistInfo playlist = item->data(0, Qt::UserRole + 1).value<MenuPlaylistInfo>();
-            emit playlistClicked(playlist.id, playlist.name);
+            QString playlistId = item->data(0, Qt::UserRole).toString();
+            QUuid playlistUuid = item->data(0, Qt::UserRole + 1).toUuid();
+            QString playlistName = item->text(0);
+            // Extract name from the "Name (X songs)" format
+            int parenIndex = playlistName.lastIndexOf(" (");
+            if (parenIndex > 0) {
+                playlistName = playlistName.left(parenIndex);
+            }
+            emit playlistClicked(playlistId, playlistName);
             break;
         }
         
@@ -321,6 +345,62 @@ void MenuWidget::setupContextMenu()
     
     // m_newPlaylistAction = m_contextMenu->addAction("New Category");
     // connect(m_newPlaylistAction, &QAction::triggered, this, &MenuWidget::createNewCategory);
+}
+
+void MenuWidget::updateCategories()
+{
+    if (!PLAYLIST_MANAGER || !m_playlistCategory) {
+        LOG_WARN("Cannot update categories: manager or playlist category is null");
+        return;
+    }
+    
+    // Clear existing child categories (but keep any existing playlists)
+    QList<QTreeWidgetItem*> toRemove;
+    for (int i = 0; i < m_playlistCategory->childCount(); ++i) {
+        QTreeWidgetItem* child = m_playlistCategory->child(i);
+        ItemType itemType = static_cast<ItemType>(child->data(0, Qt::UserRole + 2).toInt());
+        if (itemType == CategoryItem) {
+            toRemove.append(child);
+        }
+    }
+    
+    for (QTreeWidgetItem* item : toRemove) {
+        m_playlistCategory->removeChild(item);
+        delete item;
+    }
+    
+    // Load all categories from the manager
+    int categoryCount = 0, playlistCount = 0;
+    QList<playlist::CategoryInfo> categories = PLAYLIST_MANAGER->getAllCategories();
+    for (const auto& categoryInfo : categories) {
+        QString categoryId = QString("category_%1").arg(categoryInfo.uuid.toString(QUuid::WithoutBraces));
+        
+        // Create category tree widget item
+        QTreeWidgetItem* categoryItem = createCategoryItem(categoryInfo.name, categoryId, categoryInfo.uuid);
+        categoryItem->setIcon(0, QIcon(":/icons/folder.png"));
+        
+        // Add as a child of the Playlists category
+        m_playlistCategory->addChild(categoryItem);
+        
+        // Add playlists to this category
+        for (const auto& playlistInfo : categoryInfo.playlists) {
+            MenuPlaylistInfo menuPlaylist;
+            menuPlaylist.id = playlistInfo.uuid.toString(QUuid::WithoutBraces);
+            menuPlaylist.name = playlistInfo.name;
+            menuPlaylist.description = playlistInfo.description;
+            menuPlaylist.songCount = playlistInfo.songs.size();
+            
+            QTreeWidgetItem* playlistItem = createPlaylistItem(menuPlaylist, playlistInfo.uuid);
+            categoryItem->addChild(playlistItem);
+            playlistCount++;
+        }
+        categoryCount++;
+    }
+    
+    // Update button position since text might have changed
+    updateAddCategoryButtonPosition();
+    
+    LOG_INFO("Updated menu with %d categories and %d playlists", categoryCount, playlistCount);
 }
 
 void MenuWidget::showContextMenu(const QPoint& position)
@@ -357,7 +437,7 @@ void MenuWidget::addPlaylistToCategory(QTreeWidgetItem* categoryItem, const Menu
         return;
     }
 
-    QUuid categoryUuid = QUuid::fromString(categoryItem->data(0, Qt::UserRole).toString());
+    QUuid categoryUuid = categoryItem->data(0, Qt::UserRole + 1).toUuid();
     playlist::PlaylistInfo playlistInfo {
         .name = playlist.name,
         .creator = "",
@@ -370,7 +450,7 @@ void MenuWidget::addPlaylistToCategory(QTreeWidgetItem* categoryItem, const Menu
         return;
     }
     // Create playlist item and add to category
-    QTreeWidgetItem* playlistItem = createPlaylistItem(playlist);
+    QTreeWidgetItem* playlistItem = createPlaylistItem(playlist, playlistInfo.uuid);
     categoryItem->addChild(playlistItem);
 
     // Update button position if this is the playlists category (text changed)
@@ -457,7 +537,8 @@ void MenuWidget::createNewCategoryWithName(const QString& name)
         return;
     }
     
-    QTreeWidgetItem* categoryItem = createCategoryItem(name, categoryInfo.uuid.toString(QUuid::WithoutBraces));
+    QString categoryId = QString("category_%1").arg(categoryInfo.uuid.toString(QUuid::WithoutBraces));
+    QTreeWidgetItem* categoryItem = createCategoryItem(name, categoryId, categoryInfo.uuid);
     categoryItem->setIcon(0, QIcon(":/icons/folder.png"));
     
     // Add as a child of the Playlists category
@@ -528,5 +609,43 @@ void MenuWidget::onAddPlaylistButtonClicked()
                   playlistName.toUtf8().constData(),
                   category_->text(0).toUtf8().constData());
     }
+}
+
+void MenuWidget::onCategoriesLoaded(int categoryCount, int playlistCount)
+{
+    LOG_DEBUG("Categories loaded signal received: %d categories, %d playlists", categoryCount, playlistCount);
+    
+    updateCategories();
+}
+
+void MenuWidget::onCategoryAdded(const playlist::CategoryInfo& category)
+{
+    if (!m_playlistCategory) {
+        LOG_WARN("Cannot add category to menu: playlist category is null");
+        return;
+    }
+    
+    QString categoryId = QString("category_%1").arg(category.uuid.toString(QUuid::WithoutBraces));
+    
+    // Create category tree widget item
+    QTreeWidgetItem* categoryItem = createCategoryItem(category.name, categoryId, category.uuid);
+    categoryItem->setIcon(0, QIcon(":/icons/folder.png"));
+    
+    // Add as a child of the Playlists category
+    m_playlistCategory->addChild(categoryItem);
+    
+    // Add any existing playlists to this category
+    for (const auto& playlistInfo : category.playlists) {
+        MenuPlaylistInfo menuPlaylist;
+        menuPlaylist.id = playlistInfo.uuid.toString(QUuid::WithoutBraces);
+        menuPlaylist.name = playlistInfo.name;
+        menuPlaylist.description = playlistInfo.description;
+        menuPlaylist.songCount = playlistInfo.songs.size();
+        
+        QTreeWidgetItem* playlistItem = createPlaylistItem(menuPlaylist, playlistInfo.uuid);
+        categoryItem->addChild(playlistItem);
+    }
+    
+    LOG_DEBUG("Added category to menu: %s", category.name.toUtf8().constData());
 }
 

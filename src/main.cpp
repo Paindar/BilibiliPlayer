@@ -23,16 +23,14 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    try {
+        // Initialize with default workspace directory
+        APP_CONTEXT.initialize();
+    } catch (const std::exception& e) {
+        qCritical() << "Initialization failed:" << e.what();
+        QApplication::quit();
+    }
     MainWindow w;
-    QTimer::singleShot(100, [&w]() {
-        try {
-            // Initialize with default workspace directory
-            APP_CONTEXT.initialize();
-        } catch (const std::exception& e) {
-            qCritical() << "Initialization failed:" << e.what();
-            QApplication::quit();
-        }
-    });
     
     w.show();
 

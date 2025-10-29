@@ -9,10 +9,16 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QShowEvent>
+#include <QUuid>
 
 QT_BEGIN_NAMESPACE
 class Ui_MenuWidget;
 QT_END_NAMESPACE
+
+// Forward declarations
+namespace playlist {
+    struct CategoryInfo;
+}
 
 struct MenuPlaylistInfo {
     QString id;
@@ -64,14 +70,17 @@ private slots:
     void onAddPlaylistButtonClicked();
     void onTreeItemEntered(QTreeWidgetItem* item, int column);
     void onTreeLeaveEvent();
+    void onCategoriesLoaded(int categoryCount, int playlistCount);
+    void onCategoryAdded(const playlist::CategoryInfo& category);
 
 private:
     void setupMenuItems();
     void setupContextMenu();
+    void updateCategories();
     void updateAddCategoryButtonPosition();
     void updateAddPlaylistButtonPosition(QTreeWidgetItem* categoryItem);
-    QTreeWidgetItem* createCategoryItem(const QString& name, const QString& args = "");
-    QTreeWidgetItem* createPlaylistItem(const MenuPlaylistInfo& playlist);
+    QTreeWidgetItem* createCategoryItem(const QString& name, const QString& itemId, const QUuid& uuid);
+    QTreeWidgetItem* createPlaylistItem(const MenuPlaylistInfo& playlist, const QUuid& uuid);
     QTreeWidgetItem* createActionItem(const QString& name, const QString& args = "", const QIcon& icon = QIcon());
     QTreeWidgetItem* findPlaylistItem(const QString& playlistId);
     QString generateUniquePlaylistId();
