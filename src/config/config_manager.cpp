@@ -329,22 +329,26 @@ void ConfigManager::saveToFile()
 // User-configurable paths
 QString ConfigManager::getPlaylistDirectory() const
 {
-    return m_settings ? m_settings->value("directories/playlists", "config/playlists").toString() : "config/playlists";
+    QString relativePath = m_settings ? m_settings->value("directories/playlists", "config/playlists").toString() : "config/playlists";
+    return getAbsolutePath(relativePath);
 }
 
 QString ConfigManager::getThemeDirectory() const
 {
-    return m_settings ? m_settings->value("directories/themes", "config/themes").toString() : "config/themes";
+    QString relativePath = m_settings ? m_settings->value("directories/themes", "config/themes").toString() : "config/themes";
+    return getAbsolutePath(relativePath);
 }
 
 QString ConfigManager::getAudioCacheDirectory() const
 {
-    return m_settings ? m_settings->value("directories/audio_cache", "tmp/audio").toString() : "tmp/audio";
+    QString relativePath = m_settings ? m_settings->value("directories/audio_cache", "tmp/audio").toString() : "tmp/audio";
+    return getAbsolutePath(relativePath);
 }
 
 QString ConfigManager::getCoverCacheDirectory() const
 {
-    return m_settings ? m_settings->value("directories/cover_cache", "tmp/covers").toString() : "tmp/covers";
+    QString relativePath = m_settings ? m_settings->value("directories/cover_cache", "tmp/covers").toString() : "tmp/covers";
+    return getAbsolutePath(relativePath);
 }
 
 void ConfigManager::setPlaylistDirectory(const QString& relativePath)

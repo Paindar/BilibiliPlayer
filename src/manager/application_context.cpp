@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QStandardPaths>
 #include <QDir>
+#include <QCoreApplication>
 
 ApplicationContext& ApplicationContext::instance()
 {
@@ -32,10 +33,8 @@ void ApplicationContext::initialize(const QString& workspaceDir)
     // Determine workspace directory
     QString workspace = workspaceDir;
     if (workspace.isEmpty()) {
-        workspace = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-        if (workspace.isEmpty()) {
-            workspace = QDir::currentPath();
-        }
+        // Use directory where executable is located
+        workspace = QCoreApplication::applicationDirPath();
     }
     
     // Initialize logging first
