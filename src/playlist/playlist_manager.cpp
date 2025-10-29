@@ -428,6 +428,18 @@ bool PlaylistManager::saveCategoriesToJsonFile()
         jsonCategory["playlists"] = jsonPlaylists;
         jsonCategories.append(jsonCategory);
     }
+    QJsonObject rootObj;
+    rootObj["categories"] = jsonCategories;
+    QJsonDocument doc(rootObj);
+    QByteArray data = doc.toJson(QJsonDocument::Indented);
+    QFile file(m_configManager->getCategoriesFilePath());
+    if (!file.open(QIODevice::WriteOnly)) {
+        LOG_ERROR("Failed to open category JSON file for writing: {}", file.fileName().toStdString());
+        return false;
+    }
+    file.write(data);
+    file.close();
+    LOG_INFO("Categories successfully saved to JSON file: {}", file.fileName().toStdString());
     return true;
 }
 
@@ -478,6 +490,7 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
         }
         m_categories.append(category);
     }
+    return true;
 }
 
 playlist::CategoryInfo* PlaylistManager::findCategoryById(const QUuid& categoryId)
