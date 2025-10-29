@@ -43,7 +43,7 @@ MenuWidget::MenuWidget(QWidget *parent)
     connect(ui->menuTree, &QTreeWidget::itemClicked, this, &MenuWidget::onItemClicked);
     
     // Setup context menu
-    // setupContextMenu();
+    setupContextMenu();
     
     setupMenuItems();
     
@@ -323,7 +323,10 @@ void MenuWidget::onItemClicked(QTreeWidgetItem* item, int column)
             if (parenIndex > 0) {
                 playlistName = playlistName.left(parenIndex);
             }
-            emit playlistClicked(playlistId, playlistName);
+            
+            // Navigate to playlist page with playlist UUID as argument
+            QString args = QString("playlistId=%1").arg(playlistUuid.toString(QUuid::WithoutBraces));
+            emit menuItemSelected(PlaylistPage::PLAYLIST_PAGE_TYPE, playlistName, args);
             break;
         }
         
@@ -336,15 +339,16 @@ void MenuWidget::onItemClicked(QTreeWidgetItem* item, int column)
 void MenuWidget::setupContextMenu()
 {
     // Enable context menu for tree widget
-    // ui->menuTree->setContextMenuPolicy(Qt::CustomContextMenu);
-    // connect(ui->menuTree, &QTreeWidget::customContextMenuRequested, 
-    //         this, &MenuWidget::showContextMenu);
+    ui->menuTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->menuTree, &QTreeWidget::customContextMenuRequested, 
+            this, &MenuWidget::showContextMenu);
     
-    // // Create context menu
-    // m_contextMenu = new QMenu(this);
+    // Create context menu
+    m_contextMenu = new QMenu(this);
     
-    // m_newPlaylistAction = m_contextMenu->addAction("New Category");
-    // connect(m_newPlaylistAction, &QAction::triggered, this, &MenuWidget::createNewCategory);
+    // Delete action - text will be updated dynamically based on item type
+    m_deleteAction = m_contextMenu->addAction("Delete");
+    connect(m_deleteAction, &QAction::triggered, this, &MenuWidget::onDeleteItem);
 }
 
 void MenuWidget::updateCategories()
@@ -411,8 +415,27 @@ void MenuWidget::showContextMenu(const QPoint& position)
     m_contextMenuItem = item;
     ItemType itemType = static_cast<ItemType>(item->data(0, Qt::UserRole + 2).toInt());
     
-    // Show context menu for any category item (including Playlists and new categories)
+    // Don't show context menu for the main Playlists category or Action items
+    if (itemType == ActionItem || item == m_playlistCategory) {
+        return;
+    }
+    
+    // Update delete action text based on item type and name
+    QString itemName = item->text(0);
     if (itemType == CategoryItem) {
+        // Extract clean category name
+        m_deleteAction->setText(QString("Delete Category \"%1\"").arg(itemName));
+    } else if (itemType == PlaylistItem) {
+        // Extract playlist name from "Name (X songs)" format
+        int parenIndex = itemName.lastIndexOf(" (");
+        if (parenIndex > 0) {
+            itemName = itemName.left(parenIndex);
+        }
+        m_deleteAction->setText(QString("Delete Playlist \"%1\"").arg(itemName));
+    }
+    
+    // Show context menu for categories and playlists
+    if (itemType == CategoryItem || itemType == PlaylistItem) {
         m_contextMenu->exec(ui->menuTree->mapToGlobal(position));
     }
 }
@@ -421,6 +444,23 @@ void MenuWidget::createNewCategory()
 {
     // Redirect to the add button functionality
     onAddCategoryButtonClicked();
+}
+
+void MenuWidget::onDeleteItem()
+{
+    if (!m_contextMenuItem) {
+        LOG_WARN("No context menu item selected for deletion");
+        return;
+    }
+    
+    ItemType itemType = static_cast<ItemType>(m_contextMenuItem->data(0, Qt::UserRole + 2).toInt());
+    QString itemName = m_contextMenuItem->text(0);
+    
+    if (itemType == CategoryItem) {
+        deleteCategoryWithConfirmation(m_contextMenuItem);
+    } else if (itemType == PlaylistItem) {
+        deletePlaylistWithConfirmation(m_contextMenuItem);
+    }
 }
 
 QString MenuWidget::generateUniquePlaylistId()
@@ -647,5 +687,112 @@ void MenuWidget::onCategoryAdded(const playlist::CategoryInfo& category)
     }
     
     LOG_DEBUG("Added category to menu: %s", category.name.toUtf8().constData());
+}
+
+void MenuWidget::deleteCategoryWithConfirmation(QTreeWidgetItem* categoryItem)
+{
+    if (!categoryItem || !PLAYLIST_MANAGER) {
+        LOG_WARN("Cannot delete category: invalid item or manager not available");
+        return;
+    }
+    
+    QString categoryName = categoryItem->text(0);
+    QUuid categoryUuid = categoryItem->data(0, Qt::UserRole + 1).toUuid();
+    
+    // Count playlists in this category
+    int playlistCount = categoryItem->childCount();
+    
+    // Create confirmation message
+    QString confirmMessage;
+    if (playlistCount > 0) {
+        confirmMessage = QString("Are you sure you want to delete category \"%1\"?\n\n"
+                                "This will also delete %2 playlist(s) contained in this category.\n"
+                                "This action cannot be undone.")
+                                .arg(categoryName)
+                                .arg(playlistCount);
+    } else {
+        confirmMessage = QString("Are you sure you want to delete category \"%1\"?\n\n"
+                                "This action cannot be undone.")
+                                .arg(categoryName);
+    }
+    
+    // Show confirmation dialog
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        "Delete Category",
+        confirmMessage,
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+    
+    if (reply == QMessageBox::Yes) {
+        // Delete from manager first
+        if (PLAYLIST_MANAGER->removeCategory(categoryUuid)) {
+            // Remove from UI
+            if (categoryItem->parent()) {
+                categoryItem->parent()->removeChild(categoryItem);
+            } else {
+                int index = ui->menuTree->indexOfTopLevelItem(categoryItem);
+                if (index >= 0) {
+                    ui->menuTree->takeTopLevelItem(index);
+                }
+            }
+            delete categoryItem;
+            
+            LOG_INFO("Deleted category: %s with %d playlists", categoryName.toUtf8().constData(), playlistCount);
+        } else {
+            QMessageBox::warning(this, "Delete Failed", 
+                               QString("Failed to delete category \"%1\" from storage.").arg(categoryName));
+            LOG_ERROR("Failed to delete category from manager: %s", categoryName.toUtf8().constData());
+        }
+    }
+}
+
+void MenuWidget::deletePlaylistWithConfirmation(QTreeWidgetItem* playlistItem)
+{
+    if (!playlistItem || !PLAYLIST_MANAGER) {
+        LOG_WARN("Cannot delete playlist: invalid item or manager not available");
+        return;
+    }
+    
+    QString playlistName = playlistItem->text(0);
+    // Extract clean playlist name from "Name (X songs)" format
+    int parenIndex = playlistName.lastIndexOf(" (");
+    if (parenIndex > 0) {
+        playlistName = playlistName.left(parenIndex);
+    }
+    
+    QUuid playlistUuid = playlistItem->data(0, Qt::UserRole + 1).toUuid();
+    
+    // Create confirmation message
+    QString confirmMessage = QString("Are you sure you want to delete playlist \"%1\"?\n\n"
+                                   "This action cannot be undone.")
+                                   .arg(playlistName);
+    
+    // Show confirmation dialog
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        "Delete Playlist",
+        confirmMessage,
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+    
+    if (reply == QMessageBox::Yes) {
+        // Delete from manager first
+        if (PLAYLIST_MANAGER->removePlaylist(playlistUuid)) {
+            // Remove from UI
+            if (playlistItem->parent()) {
+                playlistItem->parent()->removeChild(playlistItem);
+            }
+            delete playlistItem;
+            
+            LOG_INFO("Deleted playlist: %s", playlistName.toUtf8().constData());
+        } else {
+            QMessageBox::warning(this, "Delete Failed", 
+                               QString("Failed to delete playlist \"%1\" from storage.").arg(playlistName));
+            LOG_ERROR("Failed to delete playlist from manager: %s", playlistName.toUtf8().constData());
+        }
+    }
 }
 

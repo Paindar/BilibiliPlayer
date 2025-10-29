@@ -194,39 +194,4 @@ void PlaylistPage::restoreFromState(const QString& state)
     QUrlQuery query(url.query());
     
     m_currentPlaylistId = query.queryItemValue("playlistId");
-    
-    // In a real implementation, you would load the playlist data
-    // based on the playlistId from a database or API
-    
-    // For now, create some sample data
-    if (!m_currentPlaylistId.isEmpty()) {
-        PlaylistInfo samplePlaylist;
-        samplePlaylist.name = QString("Playlist %1").arg(m_currentPlaylistId);
-        samplePlaylist.creator = "Sample User";
-        samplePlaylist.description = "This is a sample playlist for demonstration.";
-        
-        // Add sample songs
-        SongInfo song1;
-        song1.title = "Sample Song 1";
-        song1.uploader = "Artist A";
-        song1.platform = "Bilibili";
-        song1.duration = "3:45";
-        samplePlaylist.songs.append(song1);
-        
-        SongInfo song2;
-        song2.title = "Sample Song 2";
-        song2.uploader = "Artist B";
-        song2.platform = "Local";
-        song2.duration = "4:20";
-        samplePlaylist.songs.append(song2);
-        
-        SongInfo song3;
-        song3.title = "Another Great Song";
-        song3.uploader = "Famous Artist";
-        song3.platform = "Bilibili";
-        song3.duration = "2:58";
-        samplePlaylist.songs.append(song3);
-        
-        setPlaylistInfo(samplePlaylist);
-    }
 }

@@ -72,6 +72,7 @@ private slots:
     void onTreeLeaveEvent();
     void onCategoriesLoaded(int categoryCount, int playlistCount);
     void onCategoryAdded(const playlist::CategoryInfo& category);
+    void onDeleteItem();
 
 private:
     void setupMenuItems();
@@ -86,12 +87,14 @@ private:
     QString generateUniquePlaylistId();
     void addPlaylistToCategory(QTreeWidgetItem* categoryItem, const MenuPlaylistInfo& playlist);
     void createNewCategoryWithName(const QString& name);
+    void deleteCategoryWithConfirmation(QTreeWidgetItem* categoryItem);
+    void deletePlaylistWithConfirmation(QTreeWidgetItem* playlistItem);
 
 private:
     Ui_MenuWidget *ui;
     QTreeWidgetItem* m_playlistCategory;
     QMenu* m_contextMenu;
-    QAction* m_newPlaylistAction;
+    QAction* m_deleteAction;
     QTreeWidgetItem* m_contextMenuItem;
     QPushButton* m_addCategoryButton;
     QPushButton* m_addPlaylistButton;
