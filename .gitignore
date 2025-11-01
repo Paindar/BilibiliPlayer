@@ -74,6 +74,10 @@ CMakeLists.txt.user*
 
 # VSCode settings
 .vscode/*
+# Github settings
+.github/*
+# Spec-kit
+.specify/*
 # Build and generated files
 build/
 
