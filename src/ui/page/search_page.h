@@ -47,7 +47,7 @@ private slots:
     void onSearchProgress(const QString& keyword, const QList<network::SearchResult>& results);
     
     // UI interaction slots
-    void onResultItemClicked(QListWidgetItem* item);
+    void onResultItemDoubleClicked(QListWidgetItem* item);
 
 private:
     void performSearch();

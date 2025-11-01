@@ -26,7 +26,7 @@ SearchPage::SearchPage(QWidget *parent)
     connect(ui->searchButton, &QPushButton::clicked, this, &SearchPage::onSearchButtonClicked);
     connect(ui->searchInput, &QLineEdit::returnPressed, this, &SearchPage::onSearchInputReturnPressed);
     connect(ui->scopeButton, &QPushButton::clicked, this, &SearchPage::onScopeButtonClicked);
-    connect(ui->resultsList, &QListWidget::itemClicked, this, &SearchPage::onResultItemClicked);
+    connect(ui->resultsList, &QListWidget::itemDoubleClicked, this, &SearchPage::onResultItemDoubleClicked);
     
     // Connect NetworkManager signals
     auto& networkManager = NETWORK_MANAGER;
@@ -262,7 +262,7 @@ void SearchPage::onSearchProgress(const QString& keyword, const QList<network::S
     }
 }
 
-void SearchPage::onResultItemClicked(QListWidgetItem* item)
+void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
 {
     if (!item) {
         return;
@@ -285,7 +285,6 @@ void SearchPage::onResultItemClicked(QListWidgetItem* item)
         .uploader = result.uploader,
         .platform = result.platform,
         .duration = result.duration,
-        .filepath = QString("%1 - %2").arg(result.uploader, result.title),
         .args = result.interfaceData
     };
     bool success = PLAYLIST_MANAGER->addSongToPlaylist(song, currentPlaylistUuid);
