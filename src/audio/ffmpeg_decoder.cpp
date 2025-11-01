@@ -4,6 +4,7 @@
 #include <cstring>
 #include <chrono>
 #include <thread>
+#include <log/log_manager.h>
 
 FFmpegStreamDecoder::FFmpegStreamDecoder()
     : format_ctx_(nullptr)
@@ -86,7 +87,6 @@ bool FFmpegStreamDecoder::setupCustomIO() {
     
     while (true) {
         if (stream_buffer_.size() >= min_buffer_size || stream_eof_) {
-            std::cout << "Initial buffering complete: " << stream_buffer_.size() << " bytes" << std::endl;
             break;
         }
         
@@ -108,7 +108,6 @@ bool FFmpegStreamDecoder::setupCustomIO() {
 }
 
 void FFmpegStreamDecoder::streamReaderLoop() {
-    std::cout << "Stream reader thread started" << std::endl;
     
     if (input_stream_) {
         // Try to determine if this is a streaming input or file input
@@ -117,7 +116,6 @@ void FFmpegStreamDecoder::streamReaderLoop() {
         // Check if seek was successful (fail for streaming inputs)
         if (input_stream_->fail()) {
             // This is a streaming input - read chunks as they become available
-            std::cout << "Detected streaming input - reading chunks dynamically..." << std::endl;
             input_stream_->clear(); // Clear fail state
             
             char buffer[8192];
@@ -131,15 +129,11 @@ void FFmpegStreamDecoder::streamReaderLoop() {
                     stream_buffer_.resize(old_size + bytes_read);
                     std::memcpy(stream_buffer_.data() + old_size, buffer, bytes_read);
                     
-                    // std::cout << "Read " << bytes_read << " bytes, total: " 
-                    //           << stream_buffer_.size() << " bytes" << std::endl;
                 } else if (input_stream_->eof()) {
-                    std::cout << "✅ Streaming input EOF reached" << std::endl;
                     stream_eof_ = true;
                     break;
                 } else {
                     // No data available yet, wait a bit
-                    std::cout << "read bytes size: " << bytes_read << ", Waiting for more data to arrive..." << std::endl;
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             }
@@ -148,8 +142,6 @@ void FFmpegStreamDecoder::streamReaderLoop() {
             auto file_size = input_stream_->tellg();
             input_stream_->seekg(0, std::ios::beg);
             
-            std::cout << "Loading entire file (" << file_size << " bytes) into memory..." << std::endl;
-            
             // Reserve space and read entire file
             stream_buffer_.reserve(static_cast<size_t>(file_size));
             stream_buffer_.resize(static_cast<size_t>(file_size));
@@ -157,7 +149,6 @@ void FFmpegStreamDecoder::streamReaderLoop() {
             input_stream_->read(reinterpret_cast<char*>(stream_buffer_.data()), file_size);
             auto bytes_read = input_stream_->gcount();
             
-            std::cout << "Loaded " << bytes_read << " bytes into buffer" << std::endl;
             
             if (bytes_read < file_size) {
                 stream_buffer_.resize(static_cast<size_t>(bytes_read));
@@ -236,30 +227,6 @@ bool FFmpegStreamDecoder::initializeCodec() {
         return false;
     }
     
-    std::cout << "Audio stream initialized:" << std::endl;
-    std::cout << "  Codec: " << getCodecName() << std::endl;
-    std::cout << "  Sample Rate: " << audio_format_.sample_rate << " Hz" << std::endl;
-    std::cout << "  Channels: " << audio_format_.channels << std::endl;
-    std::cout << "  Duration: " << getDuration() << " seconds" << std::endl;
-    
-    // Additional format debugging
-    if (format_ctx_) {
-        std::cout << "📁 Container format details:" << std::endl;
-        std::cout << "  Format name: " << (format_ctx_->iformat ? format_ctx_->iformat->name : "unknown") << std::endl;
-        std::cout << "  Format long name: " << (format_ctx_->iformat ? format_ctx_->iformat->long_name : "unknown") << std::endl;
-        std::cout << "  Bit rate: " << format_ctx_->bit_rate << std::endl;
-        std::cout << "  File size: " << avio_size(format_ctx_->pb) << " bytes" << std::endl;
-        std::cout << "  Duration (raw): " << format_ctx_->duration << " (AV_TIME_BASE units)" << std::endl;
-        
-        if (audio_stream_index_ >= 0) {
-            AVStream* stream = format_ctx_->streams[audio_stream_index_];
-            std::cout << "🎵 Audio stream details:" << std::endl;
-            std::cout << "  Stream duration: " << stream->duration << std::endl;
-            std::cout << "  Stream time_base: " << stream->time_base.num << "/" << stream->time_base.den << std::endl;
-            std::cout << "  Stream start_time: " << stream->start_time << std::endl;
-        }
-    }
-    
     return true;
 }
 
@@ -283,13 +250,11 @@ bool FFmpegStreamDecoder::play() {
     decode_thread_ = std::thread(&FFmpegStreamDecoder::decodeLoop, this);
     playback_thread_ = std::thread(&FFmpegStreamDecoder::playbackLoop, this);
     
-    std::cout << "Playback started" << std::endl;
     return true;
 }
 
 bool FFmpegStreamDecoder::pause() {
     paused_ = !paused_;
-    std::cout << (paused_ ? "Paused" : "Resumed") << std::endl;
     return true;
 }
 
@@ -317,12 +282,10 @@ bool FFmpegStreamDecoder::stop() {
         frame_queue_.pop();
     }
     
-    std::cout << "Playback stopped" << std::endl;
     return true;
 }
 
 void FFmpegStreamDecoder::decodeLoop() {
-    std::cout << "Decode thread starting..." << std::endl;
     AVPacket packet;
     AVFrame* frame = av_frame_alloc();
     
@@ -330,36 +293,25 @@ void FFmpegStreamDecoder::decodeLoop() {
         std::cerr << "Failed to allocate frame" << std::endl;
         return;
     }
-    
-    std::cout << "Decode loop starting, playing_=" << playing_ << ", should_stop_=" << should_stop_ << std::endl;
-    
+
     while (playing_ && !should_stop_) {
         // Read packet
         int ret = av_read_frame(format_ctx_, &packet);
         if (ret < 0) {
             if (ret == AVERROR_EOF) {
-                // Check if stream should really be finished
-                std::cout << "av_read_frame EOF - checking if stream really finished..." << std::endl;
-                std::cout << "  stream_eof_: " << stream_eof_ << std::endl;
-                std::cout << "  buffer size: " << stream_buffer_.size() << std::endl;
-                std::cout << "  buffer read pos: " << buffer_read_pos_ << std::endl;
                 
                 if (stream_eof_) {
-                    std::cout << "  -> Stream truly finished, ending playback" << std::endl;
                     eof_ = true;
                     frame_cv_.notify_all();
                     break;
                 } else {
-                    std::cout << "  -> Stream not finished, but FFmpeg thinks it is. Resetting format context..." << std::endl;
                     
                     // Reset FFmpeg's internal EOF state by seeking to current position
                     if (format_ctx_->pb) {
                         int64_t current_pos = avio_tell(format_ctx_->pb);
-                        std::cout << "  -> Current AVIO position: " << current_pos << std::endl;
                         
                         // Seek to current position to clear EOF flag
                         int seek_result = avio_seek(format_ctx_->pb, current_pos, SEEK_SET);
-                        std::cout << "  -> Seek result: " << seek_result << std::endl;
                         
                         // Also try to flush any internal buffers
                         if (format_ctx_->pb->buf_ptr) {
@@ -374,7 +326,6 @@ void FFmpegStreamDecoder::decodeLoop() {
                 }
             } else if (ret == AVERROR(EAGAIN)) {
                 // Temporarily no data available, wait briefly and retry
-                std::cout << "⏳ av_read_frame EAGAIN - waiting for more data..." << std::endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
@@ -426,7 +377,6 @@ void FFmpegStreamDecoder::decodeLoop() {
     }
     
     av_frame_free(&frame);
-    std::cout << "Decode thread finished - playing_=" << playing_ << ", should_stop_=" << should_stop_ << ", eof_=" << eof_ << std::endl;
 }
 
 void FFmpegStreamDecoder::playbackLoop() {
@@ -492,8 +442,6 @@ void FFmpegStreamDecoder::playbackLoop() {
             }
         }
     }
-    
-    std::cout << "Playback thread finished" << std::endl;
 }
 
 std::shared_ptr<AudioFrame> FFmpegStreamDecoder::decodeFrame(AVFrame* frame) {
@@ -688,7 +636,7 @@ int FFmpegStreamDecoder::readPacket(void* opaque, uint8_t* buf, int buf_size) {
     auto* decoder = static_cast<FFmpegStreamDecoder*>(opaque);
     
     if (!decoder || buf_size <= 0) {
-        std::cout << "readPacket: Invalid parameters" << std::endl;
+        std::cerr << "readPacket: Invalid parameters" << std::endl;
         return AVERROR(EINVAL);
     }
     
@@ -698,11 +646,9 @@ int FFmpegStreamDecoder::readPacket(void* opaque, uint8_t* buf, int buf_size) {
     if (available == 0) {
         if (decoder->stream_eof_) {
             // Stream is truly finished - return EOF
-            std::cout << "readPacket: Stream finished, returning EOF" << std::endl;
             return AVERROR_EOF;
         } else {
             // For streaming, wait a bit for more data instead of returning EAGAIN immediately
-            std::cout << "readPacket: No data available, waiting for more data..." << std::endl;
             
             // Wait briefly for new data to arrive
             size_t initial_size = decoder->stream_buffer_.size();
@@ -716,14 +662,11 @@ int FFmpegStreamDecoder::readPacket(void* opaque, uint8_t* buf, int buf_size) {
             // Check if new data arrived
             size_t new_available = decoder->stream_buffer_.size() - current_pos;
             if (new_available > 0) {
-                std::cout << "readPacket: New data arrived, continuing..." << std::endl;
                 // Don't return here, let it fall through to read the new data
             } else if (decoder->stream_eof_) {
-                std::cout << "readPacket: Stream finished while waiting, returning EOF" << std::endl;
                 return AVERROR_EOF;
             } else {
                 // Still no data and stream not finished, return EAGAIN
-                std::cout << "readPacket: Still no data after waiting, returning EAGAIN" << std::endl;
                 return AVERROR(EAGAIN);
             }
             
@@ -743,16 +686,9 @@ int FFmpegStreamDecoder::readPacket(void* opaque, uint8_t* buf, int buf_size) {
     static int call_count = 0;
     call_count++;
     if (call_count % 10 == 0) { // Log every 10th call to reduce verbosity
-        std::cout << "readPacket call " << call_count << ": requested=" << buf_size 
-                  << ", buffer_size=" << decoder->stream_buffer_.size() / 1024 << "KB"
-                  << ", available=" << available / 1024 << "KB"
-                  << ", read_pos=" << current_pos << std::endl;
-        std::cout << "readPacket: returning " << to_read << " bytes" << std::endl;
         
         // Calculate percentage of buffer consumed
         double percent_read = (double)current_pos / decoder->stream_buffer_.size() * 100.0;
-        std::cout << "📊 Buffer consumption: " << percent_read << "% (" 
-                  << current_pos / 1024 << "KB / " << decoder->stream_buffer_.size() / 1024 << "KB)" << std::endl;
     }
     
     return static_cast<int>(to_read);

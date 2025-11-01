@@ -7,6 +7,8 @@
 #include <regex>
 #include <openssl/md5.h>
 #include <json/json.h>
+#include <log/log_manager.h>
+#include <filesystem>
 
 // Mixin key encoding table from Python script
 static const std::vector<int> mixinKeyEncTab = {
@@ -22,7 +24,7 @@ BilibiliNetworkInterface::BilibiliNetworkInterface()
     : timeout_seconds_(10)
     , follow_location_(true)
     , connected_(false)
-    , config_file_("config.json") {
+    , platform_dir_("./") {
     initializeDefaultHeaders();
 }
 
@@ -60,7 +62,7 @@ bool BilibiliNetworkInterface::connect(const std::string& base_url) {
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Connection failed: " << e.what() << std::endl;
+        LOG_ERROR("Connection failed: {}", e.what());
         connected_ = false;
         return false;
     }
@@ -78,13 +80,22 @@ bool BilibiliNetworkInterface::isConnected() const {
     return connected_;
 }
 
+bool BilibiliNetworkInterface::setPlatformDirectory(const std::string &platform_dir)
+{
+    if (std::filesystem::exists(platform_dir) && std::filesystem::is_directory(platform_dir)) {
+        this->platform_dir_ = platform_dir;
+        return true;
+    }
+    return false;
+}
+
 void BilibiliNetworkInterface::initializeDefaultHeaders() {
     headers_["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                             "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
     headers_["Accept"] = "application/json, text/plain, */*";
     headers_["Accept-Language"] = "zh-CN,zh;q=0.9";
     // headers_["Connection"] = "keep-alive";
-    headers_["Cookies"] = "";
+    headers_["Cookie"] = "";
     headers_["Content-Type"] = "application/x-www-form-urlencoded";
     headers_["Referer"] = "https://www.bilibili.com/";
 }
@@ -137,7 +148,6 @@ bool BilibiliNetworkInterface::initializeCookies() {
         }
     }
     
-    return false;
     return false;
 }
 
@@ -220,19 +230,18 @@ bool BilibiliNetworkInterface::refreshWbiKeys() {
 }
 
 std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std::string& title, int page) {
-    std::vector<BilibiliVideoInfo> results;
-    
-    if (!connected_) return results;
+    if (!connected_) return {};
     
     std::unordered_map<std::string, std::string> params = {
         {"search_type", "video"},
         {"keyword", title},
-        {"order", "totalrank"},
+        // {"order", "totalrank"},
         {"page", std::to_string(page)}
     };
     
     auto signed_params = encWbi(params);
     
+    std::vector<BilibiliVideoInfo> results;
     std::string response;
     if (makeSignedRequest("/x/web-interface/wbi/search/type", signed_params, response)) {
         Json::Value root;
@@ -249,7 +258,7 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
                 // Clean up HTML tags from title
                 std::regex html_tag("<[^>]*>");
                 info.title = std::regex_replace(info.title, html_tag, "");
-                
+                LOG_DEBUG("Found video: {} by {}", info.title, info.author);
                 results.push_back(info);
             }
         }
@@ -277,6 +286,7 @@ std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid(const std::s
                 info.page = page["page"].asInt();
                 info.part = page["part"].asString();
                 info.duration = page["duration"].asInt();
+                info.first_frame = page["first_frame"].asString();
                 pages.push_back(info);
             }
         }
@@ -333,7 +343,7 @@ uint64_t BilibiliNetworkInterface::getStreamBytesSize(const std::string &url)
         // Parse the URL to extract host and path
         std::string host, path;
         if (!parseUrl(url, host, path)) {
-            std::cerr << "Failed to parse URL: " << url << std::endl;
+            LOG_ERROR("Failed to parse URL: {}", url);
             return 0;
         }
 
@@ -387,7 +397,7 @@ uint64_t BilibiliNetworkInterface::getStreamBytesSize(const std::string &url)
             }
         }
     } catch (const std::exception& e) {
-        std::cerr << "Exception while getting stream size: " << e.what() << std::endl;
+        LOG_ERROR("Exception while getting stream size: {}", e.what());
     }
 
     return 0;
@@ -405,7 +415,7 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
             // Parse the URL to extract host and path
             std::string host, path;
             if (!parseUrl(url, host, path)) {
-                std::cerr << "Failed to parse URL: " << url << std::endl;
+                LOG_ERROR("Failed to parse URL: {}", url);
                 return false;
             }
             
@@ -423,19 +433,19 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
             auto res = stream_client->Get(path, headers, content_receiver, progress_callback);
             
             if (!res) {
-                std::cerr << "Network error during async streaming from: " << url << std::endl;
+                LOG_ERROR("Failed to perform async streaming from: {}", url);
                 return false;
             }
             
             if (res->status != 200) {
-                std::cerr << "HTTP error " << res->status << " when async streaming from: " << url << std::endl;
+                LOG_ERROR("HTTP error {} when async streaming from: {}", res->status, url);
                 return false;
             }
             
             return true;
             
         } catch (const std::exception& e) {
-            std::cerr << "Exception during async streaming: " << e.what() << std::endl;
+            LOG_ERROR("Exception during async streaming: {}", e.what());
             return false;
         }
     });
@@ -494,6 +504,7 @@ bool BilibiliNetworkInterface::makeSignedRequest(const std::string& path,
         if (!query.empty()) query += "&";
         query += urlEncode(pair.first) + "=" + urlEncode(pair.second);
     }
+    LOG_DEBUG("Making signed request to {} with params: {}", path, query);
     
     auto res = http_client_->Get(path + "?" + query, getHttplibHeaders());
     
@@ -525,15 +536,23 @@ std::string BilibiliNetworkInterface::urlEncode(const std::string& str) const {
 }
 
 std::string BilibiliNetworkInterface::md5Hash(const std::string& str) const {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    MD5((unsigned char*)str.c_str(), str.length(), digest);
-    
-    std::ostringstream ss;
-    for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(ctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(ctx, str.data(), str.size());
+    EVP_DigestFinal_ex(ctx, digest, &digest_len);
+    EVP_MD_CTX_free(ctx);
+
+    static const char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(digest_len * 2);
+    for (unsigned int i = 0; i < digest_len; ++i) {
+        out.push_back(hex[digest[i] >> 4]);
+        out.push_back(hex[digest[i] & 0xF]);
     }
-    
-    return ss.str();
+    return out;
 }
 
 std::string BilibiliNetworkInterface::getCurrentTimestamp() const {
@@ -554,21 +573,66 @@ bool BilibiliNetworkInterface::needsWbiRefresh() const {
 
 // Configuration methods with cookie persistence
 bool BilibiliNetworkInterface::loadConfig(const std::string& config_file) {
-    std::string cookie_file = config_file.empty() ? config_file_ : config_file;
-    if (cookie_file.find(".json") == std::string::npos) {
-        cookie_file = cookie_file.substr(0, cookie_file.find_last_of('.')) + "_cookies.json";
-    }
+    std::string config = platform_dir_ + '/' + (config_file.empty() ? "bilibili.json" : config_file);
     
-    return loadCookiesFromFile(cookie_file);
+    std::ifstream file(config);
+    if (file.is_open()) {
+        Json::Value root;
+        Json::Reader reader;
+        
+        if (reader.parse(file, root)) {
+            // Load headers
+            if (root.isMember("headers")) {
+                const auto& headersObj = root["headers"];
+                if (!loadHeaders(headersObj)) {
+                    LOG_ERROR("Failed to load headers from config.");
+                }
+            }
+            // Load cookies
+            if (root.isMember("cookies")) {
+                const auto& cookiesObj = root["cookies"];
+                cookies_.clear();
+                if (!loadCookies(cookiesObj)) {
+                    LOG_ERROR("Failed to load cookies from config.");
+                }
+            }
+            // Load img_key, sub_key, last_update if present
+            if (root.isMember("wbi_keys")) {
+                const auto& wbiObj = root["wbi_keys"];
+                if (!loadWbiKeys(wbiObj)) {
+                    LOG_ERROR("Failed to load WBI keys from config.");
+                }
+            }
+            return true;
+        } else {
+            LOG_ERROR("Failed to parse config file: {}", config);
+        }
+    }
+    return false;
 }
 
 bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
-    std::string cookie_file = config_file.empty() ? config_file_ : config_file;
-    if (cookie_file.find(".json") == std::string::npos) {
-        cookie_file = cookie_file.substr(0, cookie_file.find_last_of('.')) + "_cookies.json";
+    std::string config = platform_dir_ + '/' + (config_file.empty() ? "bilibili.json" : config_file);
+    std::ofstream file(config);
+    if (!file.is_open()) {
+        LOG_ERROR("Failed to open config file for writing: {}", config);
+        return false;
     }
-    
-    return saveCookiesToFile(cookie_file);
+    Json::Value root;
+    // Save headers
+    if (!saveHeaders(root["headers"])) {
+        LOG_ERROR("Failed to save headers to config.");
+    }
+    // Save cookies
+    if (!saveCookies(root["cookies"])) {
+        LOG_ERROR("Failed to save cookies to config.");
+    }
+    // Save Wbi keys
+    if (!saveWbiKeys(root["wbi_keys"])) {
+        LOG_ERROR("Failed to save WBI keys to config.");
+    }
+    file << root.toStyledString();
+    return true;
 }
 
 void BilibiliNetworkInterface::setHeader(const std::string& key, const std::string& value) {
@@ -613,58 +677,15 @@ std::unordered_map<std::string, std::string> BilibiliNetworkInterface::getCurren
     return cookies_;
 }
 
-// Improved cookie management methods
-BilibiliNetworkInterface::ParsedCookie BilibiliNetworkInterface::parseCookieHeader(const std::string& cookie_header) const {
-    ParsedCookie cookie;
-    
-    // Split cookie header by semicolon to get all attributes
-    std::vector<std::string> parts;
-    std::stringstream ss(cookie_header);
-    std::string part;
-    
-    while (std::getline(ss, part, ';')) {
-        // Trim whitespace
-        part.erase(0, part.find_first_not_of(" \t"));
-        part.erase(part.find_last_not_of(" \t") + 1);
-        parts.push_back(part);
-    }
-    
-    if (parts.empty()) return cookie;
-    
-    // First part is always name=value
-    size_t eq_pos = parts[0].find('=');
-    if (eq_pos != std::string::npos) {
-        cookie.name = parts[0].substr(0, eq_pos);
-        cookie.value = parts[0].substr(eq_pos + 1);
-    }
-    
-    // Parse additional attributes
-    for (size_t i = 1; i < parts.size(); i++) {
-        std::string attr = parts[i];
-        std::transform(attr.begin(), attr.end(), attr.begin(), ::tolower);
-        
-        if (attr.find("domain=") == 0) {
-            cookie.domain = parts[i].substr(7);
-        } else if (attr.find("path=") == 0) {
-            cookie.path = parts[i].substr(5);
-        } else if (attr.find("expires=") == 0) {
-            cookie.expires = parts[i].substr(8);
-        } else if (attr == "secure") {
-            cookie.secure = true;
-        } else if (attr == "httponly") {
-            cookie.httpOnly = true;
-        } else if (attr.find("samesite=") == 0) {
-            cookie.sameSite = parts[i].substr(9);
-        }
-    }
-    
-    return cookie;
-}
-
 void BilibiliNetworkInterface::updateClientCookies() {
     // Since httplib 0.15.3 doesn't have built-in cookie store management,
     // we manually add cookies to each request via headers
-    // This method ensures our main http_client stays updated with current cookies
+    // Update the Cookie header in our headers map for consistency
+    if (!cookies_.empty()) {
+        headers_["Cookie"] = getCookieString();
+    } else {
+        headers_.erase("Cookie");
+    }
 }
 
 void BilibiliNetworkInterface::syncCookiesFromHttplib() {
@@ -692,61 +713,103 @@ void BilibiliNetworkInterface::clearCookies() {
     updateClientCookies();
 }
 
-bool BilibiliNetworkInterface::saveCookiesToFile(const std::string& filename) const {
+bool BilibiliNetworkInterface::loadHeaders(const Json::Value &jsonObj)
+{
     try {
-        Json::Value root;
-        Json::Value cookiesObj;
-        
-        // Create object format: { "cookies": { "key1": "val1", "key2": "val2" } }
-        for (const auto& cookie : cookies_) {
-            cookiesObj[cookie.first] = cookie.second;
-        }
-        root["cookies"] = cookiesObj;
-        
-        std::ofstream file(filename);
-        if (file.is_open()) {
-            Json::StreamWriterBuilder builder;
-            builder["indentation"] = "  ";
-            std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
-            writer->write(root, &file);
-            file.close();
+        if (jsonObj.isObject()) {
+            for (const auto& key : jsonObj.getMemberNames()) {
+                headers_[key] = jsonObj[key].asString();
+            }
             return true;
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error saving cookies: " << e.what() << std::endl;
+        LOG_ERROR("Error loading headers: {}", e.what());
     }
     return false;
 }
 
-bool BilibiliNetworkInterface::loadCookiesFromFile(const std::string& filename) {
+bool BilibiliNetworkInterface::saveHeaders(Json::Value &jsonObj) const
+{
     try {
-        std::ifstream file(filename);
-        if (!file.is_open()) return false;
+        // Ensure the jsonObj is an object type
+        if (!jsonObj.isObject()) {
+            jsonObj = Json::Value(Json::objectValue);
+        }
         
-        Json::Value root;
-        Json::Reader reader;
-        if (!reader.parse(file, root)) return false;
-        
-        cookies_.clear();
-        // Format: { "cookies": { "key1": "val1", "key2": "val2", "key3": "val3" }, ... }
-        if (root["cookies"].isObject()) {
-            for (const auto& cookie : root["cookies"].getMemberNames()) {
-                std::string name = cookie;
-                std::string value = root["cookies"][cookie].asString();
-                
-                // Check if cookie is still valid (optional expiration check)
-                if (!name.empty()) {
-                    cookies_[name] = value;
-                }
+        for (const auto& header : headers_) {
+            jsonObj[header.first] = header.second;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Error saving headers: {}", e.what());
+    }
+    return false;
+}
+
+bool BilibiliNetworkInterface::loadCookies(const Json::Value& jsonObj) {
+    try {
+        if (jsonObj.isObject()) {
+            for (const auto& key : jsonObj.getMemberNames()) {
+                cookies_[key] = jsonObj[key].asString();
             }
         }
         
         updateClientCookies();
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Error loading cookies: " << e.what() << std::endl;
+        LOG_ERROR("Error loading cookies: {}", e.what());
     }
     return false;
+}
+
+bool BilibiliNetworkInterface::saveCookies(Json::Value& jsonObj) const {
+    try {
+        // Ensure the jsonObj is an object type
+        if (!jsonObj.isObject()) {
+            jsonObj = Json::Value(Json::objectValue);
+        }
+        
+        for (const auto& cookie : cookies_) {
+            jsonObj[cookie.first] = cookie.second;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Error saving cookies: {}", e.what());
+    }
+    return false;
+}
+
+bool network::BilibiliNetworkInterface::loadWbiKeys(const Json::Value &jsonObj)
+{
+    if (jsonObj.isObject()) {
+        wbi_keys_.img_key = jsonObj.get("img_key", "").asString();
+        wbi_keys_.sub_key = jsonObj.get("sub_key", "").asString();
+        std::string last_update_str = jsonObj.get("last_update", "").asString();
+        if (!last_update_str.empty()) {
+            try {
+                std::time_t t = std::stoll(last_update_str);
+                wbi_keys_.last_update = std::chrono::system_clock::from_time_t(t);
+            } catch (...) {
+                wbi_keys_.last_update = std::chrono::system_clock::now();
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool network::BilibiliNetworkInterface::saveWbiKeys(Json::Value &jsonObj) const
+{
+    // Ensure the jsonObj is an object type
+    if (!jsonObj.isObject()) {
+        jsonObj = Json::Value(Json::objectValue);
+    }
+    
+    jsonObj["img_key"] = wbi_keys_.img_key;
+    jsonObj["sub_key"] = wbi_keys_.sub_key;
+    std::time_t t = std::chrono::system_clock::to_time_t(wbi_keys_.last_update);
+    jsonObj["last_update"] = std::to_string(t);
+    return true;
 }
 
 bool BilibiliNetworkInterface::isValidUrl(const std::string& url) const {
@@ -776,4 +839,24 @@ bool BilibiliNetworkInterface::parseUrl(const std::string& url, std::string& hos
     }
     
     return true;
+}
+
+std::string BilibiliNetworkInterface::getUrlByParams(const std::string &params) {
+    std::string bvid;
+    int64_t cid = 0;
+
+    auto bvid_pos = params.find("bvid=");
+    if (bvid_pos != std::string::npos) {
+        size_t bvid_end = params.find('&', bvid_pos);
+        bvid = params.substr(bvid_pos + 5, bvid_end - (bvid_pos + 5));
+    }
+    auto cid_pos = params.find("cid=");
+    if (cid_pos != std::string::npos) {
+        size_t cid_end = params.size();
+        cid = std::stoll(params.substr(cid_pos + 4, cid_end - (cid_pos + 4)));
+    }
+    if (!bvid.empty() && cid != 0) {
+        return getAudioLink(bvid, cid);
+    }
+    return std::string();
 }

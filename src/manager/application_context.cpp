@@ -122,12 +122,12 @@ void ApplicationContext::initializeNetworkManager()
     LOG_DEBUG("Creating NetworkManager...");
     
     // Use singleton instance and configure it
-    QString apiBaseUrl = m_configManager->getApiBaseUrl();
+    QString platformDir = m_configManager->getPlatformDirectory();
     int timeout = m_configManager->getNetworkTimeout();
     QString proxyUrl = m_configManager->getProxyUrl();
-    
-    network::NetworkManager::instance().configure(apiBaseUrl, timeout, proxyUrl);
-    
+
+    network::NetworkManager::instance().configure(platformDir, timeout, proxyUrl);
+
     LOG_DEBUG("NetworkManager initialized with config settings");
 }
 

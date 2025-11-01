@@ -6,6 +6,7 @@
 
 QT_BEGIN_NAMESPACE
 class Ui_SearchPage;
+class QListWidgetItem;
 QT_END_NAMESPACE
 
 
@@ -43,13 +44,17 @@ private slots:
     // NetworkManager slots
     void onSearchCompleted(const QString& keyword);
     void onSearchFailed(const QString& keyword, const QString& errorMessage);
-    void onSearchProgress(const QString& keyword, const QList<SearchResult>& results);
+    void onSearchProgress(const QString& keyword, const QList<network::SearchResult>& results);
+    
+    // UI interaction slots
+    void onResultItemClicked(QListWidgetItem* item);
 
 private:
     void performSearch();
     void showEmptyState();
     void showResults();
     void setupScopeMenu();
+    QString convertPlatformEnumToString(network::SupportInterface platform) const;
     
 private:
     Ui_SearchPage *ui;

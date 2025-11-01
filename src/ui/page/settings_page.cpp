@@ -71,8 +71,6 @@ void SettingsPage::connectSignals()
             this, &SettingsPage::selectAccentColor);
     
     // Network settings
-    connect(ui->apiUrlEdit, &QLineEdit::textChanged,
-            this, &SettingsPage::onSettingsChanged);
     connect(ui->timeoutSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &SettingsPage::onSettingsChanged);
     connect(ui->proxyUrlEdit, &QLineEdit::textChanged,
@@ -87,6 +85,8 @@ void SettingsPage::connectSignals()
             this, &SettingsPage::selectAudioCacheDirectory);
     connect(ui->coverCacheDirButton, &QPushButton::clicked,
             this, &SettingsPage::selectCoverCacheDirectory);
+    connect(ui->platformDirButton, &QPushButton::clicked,
+            this, &SettingsPage::selectPlatformDirectory);
     
     // Playlist settings
     connect(ui->autoSaveCheckBox, &QCheckBox::toggled,
@@ -148,7 +148,6 @@ void SettingsPage::loadSettings()
     updateAccentColorButton();
     
     // Network settings
-    ui->apiUrlEdit->setText(m_configManager->getApiBaseUrl());
     ui->timeoutSpinBox->setValue(m_configManager->getNetworkTimeout());
     ui->proxyUrlEdit->setText(m_configManager->getProxyUrl());
     
@@ -182,7 +181,6 @@ void SettingsPage::saveSettings()
     m_configManager->setAccentColor(m_selectedAccentColor);
     
     // Network settings
-    m_configManager->setApiBaseUrl(ui->apiUrlEdit->text());
     m_configManager->setNetworkTimeout(ui->timeoutSpinBox->value());
     m_configManager->setProxyUrl(ui->proxyUrlEdit->text());
     
@@ -305,6 +303,24 @@ void SettingsPage::selectCoverCacheDirectory()
     }
 }
 
+void SettingsPage::selectPlatformDirectory()
+{
+    QString currentDir = m_configManager->getAbsolutePath(m_configManager->getPlatformDirectory());
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Select Platform Directory"), currentDir);
+    
+    if (!dir.isEmpty()) {
+        QString relativePath = QDir(m_configManager->getWorkspaceDirectory()).relativeFilePath(dir);
+        if (m_configManager->validateRelativePath(relativePath)) {
+            m_configManager->setPlatformDirectory(relativePath);
+            updateDirectoryLabels();
+            onSettingsChanged();
+        } else {
+            QMessageBox::warning(this, tr("Invalid Directory"), 
+                               tr("The selected directory is outside the workspace or invalid."));
+        }
+    }
+}
+
 void SettingsPage::selectAccentColor()
 {
     QColor color = QColorDialog::getColor(m_selectedAccentColor, this, tr("Select Accent Color"));
@@ -370,6 +386,7 @@ void SettingsPage::updateDirectoryLabels()
         ui->themeDirEdit->setText(m_configManager->getThemeDirectory());
         ui->audioCacheDirEdit->setText(m_configManager->getAudioCacheDirectory());
         ui->coverCacheDirEdit->setText(m_configManager->getCoverCacheDirectory());
+        ui->platformDirEdit->setText(m_configManager->getPlatformDirectory());
     }
 }
 

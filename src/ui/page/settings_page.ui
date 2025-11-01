@@ -339,27 +339,13 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
            <number>10</number>
           </property>
           <item row="0" column="0">
-           <widget class="QLabel" name="apiUrlLabel">
-            <property name="text">
-             <string>API Base URL:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="apiUrlEdit">
-            <property name="placeholderText">
-             <string>https://api.bilibili.com</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
            <widget class="QLabel" name="timeoutLabel">
             <property name="text">
              <string>Timeout (ms):</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="1">
+          <item row="0" column="1">
            <widget class="QSpinBox" name="timeoutSpinBox">
             <property name="suffix">
              <string> ms</string>
@@ -375,14 +361,14 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
+          <item row="1" column="0">
            <widget class="QLabel" name="proxyUrlLabel">
             <property name="text">
              <string>Proxy URL:</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="1">
+          <item row="1" column="1">
            <widget class="QLineEdit" name="proxyUrlEdit">
             <property name="placeholderText">
              <string>http://proxy.example.com:8080</string>
@@ -480,6 +466,27 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
           </item>
           <item row="3" column="2">
            <widget class="QPushButton" name="coverCacheDirButton">
+            <property name="text">
+             <string>Browse...</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="platformDirLabel">
+            <property name="text">
+             <string>Platform:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="platformDirEdit">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <widget class="QPushButton" name="platformDirButton">
             <property name="text">
              <string>Browse...</string>
             </property>

@@ -375,7 +375,7 @@ void MenuWidget::updateCategories()
     
     // Load all categories from the manager
     int categoryCount = 0, playlistCount = 0;
-    QList<playlist::CategoryInfo> categories = PLAYLIST_MANAGER->getAllCategories();
+    QList<playlist::CategoryInfo> categories = PLAYLIST_MANAGER->iterateCategories([](const playlist::CategoryInfo&) { return true; });
     for (const auto& categoryInfo : categories) {
         QString categoryId = QString("category_%1").arg(categoryInfo.uuid.toString(QUuid::WithoutBraces));
         
@@ -387,12 +387,17 @@ void MenuWidget::updateCategories()
         m_playlistCategory->addChild(categoryItem);
         
         // Add playlists to this category
-        for (const auto& playlistInfo : categoryInfo.playlists) {
+        auto playlists = PLAYLIST_MANAGER->iteratePlaylistsInCategory(categoryInfo.uuid, 
+            [](const playlist::PlaylistInfo&) { return true; });
+        for (const auto& playlistInfo : playlists) {
             MenuPlaylistInfo menuPlaylist;
             menuPlaylist.id = playlistInfo.uuid.toString(QUuid::WithoutBraces);
             menuPlaylist.name = playlistInfo.name;
             menuPlaylist.description = playlistInfo.description;
-            menuPlaylist.songCount = playlistInfo.songs.size();
+            // Get song count from the separate songs storage
+            auto songs = PLAYLIST_MANAGER->iterateSongsInPlaylist(playlistInfo.uuid,
+                [](const playlist::SongInfo&) { return true; });
+            menuPlaylist.songCount = songs.size();
             
             QTreeWidgetItem* playlistItem = createPlaylistItem(menuPlaylist, playlistInfo.uuid);
             categoryItem->addChild(playlistItem);
@@ -403,8 +408,8 @@ void MenuWidget::updateCategories()
     
     // Update button position since text might have changed
     updateAddCategoryButtonPosition();
-    
-    LOG_INFO("Updated menu with %d categories and %d playlists", categoryCount, playlistCount);
+
+    LOG_INFO("Updated menu with {} categories and {} playlists", categoryCount, playlistCount);
 }
 
 void MenuWidget::showContextMenu(const QPoint& position)
@@ -675,12 +680,17 @@ void MenuWidget::onCategoryAdded(const playlist::CategoryInfo& category)
     m_playlistCategory->addChild(categoryItem);
     
     // Add any existing playlists to this category
-    for (const auto& playlistInfo : category.playlists) {
+    auto playlists = PLAYLIST_MANAGER->iteratePlaylistsInCategory(category.uuid, 
+        [](const playlist::PlaylistInfo&) { return true; });
+    for (const auto& playlistInfo : playlists) {
         MenuPlaylistInfo menuPlaylist;
         menuPlaylist.id = playlistInfo.uuid.toString(QUuid::WithoutBraces);
         menuPlaylist.name = playlistInfo.name;
         menuPlaylist.description = playlistInfo.description;
-        menuPlaylist.songCount = playlistInfo.songs.size();
+        // Get song count from the separate songs storage
+        auto songs = PLAYLIST_MANAGER->iterateSongsInPlaylist(playlistInfo.uuid,
+            [](const playlist::SongInfo&) { return true; });
+        menuPlaylist.songCount = songs.size();
         
         QTreeWidgetItem* playlistItem = createPlaylistItem(menuPlaylist, playlistInfo.uuid);
         categoryItem->addChild(playlistItem);
@@ -779,8 +789,14 @@ void MenuWidget::deletePlaylistWithConfirmation(QTreeWidgetItem* playlistItem)
     );
     
     if (reply == QMessageBox::Yes) {
+        // Get parent category UUID
+        QUuid categoryUuid;
+        if (playlistItem->parent()) {
+            categoryUuid = playlistItem->parent()->data(0, Qt::UserRole + 1).toUuid();
+        }
+        
         // Delete from manager first
-        if (PLAYLIST_MANAGER->removePlaylist(playlistUuid)) {
+        if (PLAYLIST_MANAGER->removePlaylist(playlistUuid, categoryUuid)) {
             // Remove from UI
             if (playlistItem->parent()) {
                 playlistItem->parent()->removeChild(playlistItem);

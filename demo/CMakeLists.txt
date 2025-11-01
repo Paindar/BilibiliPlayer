@@ -27,9 +27,15 @@ set(BILI_STREAM_TEST_SOURCES
     src/streaming_audio_buffer.cpp
 )
 
+set(BILI_INTERFACE_TEST_SOURCES
+    test/bilibili_interface_test.cpp
+    src/bili_network_interface.cpp
+)
+
 # Create executables
 add_executable(SimpleWavTest ${SIMPLE_WAV_TEST_SOURCES})
 add_executable(BiliStreamTest ${BILI_STREAM_TEST_SOURCES})
+add_executable(BilibiliInterfaceTest ${BILI_INTERFACE_TEST_SOURCES})
 
 
 target_link_libraries(SimpleWavTest PRIVATE 
@@ -46,4 +52,11 @@ target_link_libraries(BiliStreamTest PRIVATE
     OpenSSL::Crypto
     ole32      # COM library
     oleaut32   # COM automation
+)
+
+target_link_libraries(BilibiliInterfaceTest PRIVATE 
+    httplib::httplib
+    JsonCpp::JsonCpp
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )

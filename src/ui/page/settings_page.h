@@ -55,6 +55,7 @@ private slots:
     void selectThemeDirectory();
     void selectAudioCacheDirectory();
     void selectCoverCacheDirectory();
+    void selectPlatformDirectory();
     void selectAccentColor();
     void applySettings();
     void resetSettings();

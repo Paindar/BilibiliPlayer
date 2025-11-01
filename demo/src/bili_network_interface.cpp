@@ -522,15 +522,23 @@ std::string BilibiliNetworkInterface::urlEncode(const std::string& str) const {
 }
 
 std::string BilibiliNetworkInterface::md5Hash(const std::string& str) const {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    MD5((unsigned char*)str.c_str(), str.length(), digest);
-    
-    std::ostringstream ss;
-    for (int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    unsigned int digest_len = 0;
+
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(ctx, EVP_md5(), nullptr);
+    EVP_DigestUpdate(ctx, str.data(), str.size());
+    EVP_DigestFinal_ex(ctx, digest, &digest_len);
+    EVP_MD_CTX_free(ctx);
+
+    static const char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(digest_len * 2);
+    for (unsigned int i = 0; i < digest_len; ++i) {
+        out.push_back(hex[digest[i] >> 4]);
+        out.push_back(hex[digest[i] & 0xF]);
     }
-    
-    return ss.str();
+    return out;
 }
 
 std::string BilibiliNetworkInterface::getCurrentTimestamp() const {

@@ -46,16 +46,16 @@ public:
     QString getThemeDirectory() const;
     QString getAudioCacheDirectory() const;
     QString getCoverCacheDirectory() const;
+    QString getPlatformDirectory() const;
     void setPlaylistDirectory(const QString& relativePath);
     void setThemeDirectory(const QString& relativePath);
     void setAudioCacheDirectory(const QString& relativePath);
     void setCoverCacheDirectory(const QString& relativePath);
+    void setPlatformDirectory(const QString& relativePath);
     
     // Network settings (needed by NetworkManager)
-    QString getApiBaseUrl() const;
     int getNetworkTimeout() const;
     QString getProxyUrl() const;
-    void setApiBaseUrl(const QString& url);
     void setNetworkTimeout(int timeoutMs);
     void setProxyUrl(const QString& url);
     

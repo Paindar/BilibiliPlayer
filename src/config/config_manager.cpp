@@ -351,6 +351,12 @@ QString ConfigManager::getCoverCacheDirectory() const
     return getAbsolutePath(relativePath);
 }
 
+QString ConfigManager::getPlatformDirectory() const
+{
+    QString relativePath = m_settings ? m_settings->value("directories/platform", "config/platform").toString() : "config/platform";
+    return getAbsolutePath(relativePath);
+}
+
 void ConfigManager::setPlaylistDirectory(const QString& relativePath)
 {
     if (!m_settings) return;
@@ -408,11 +414,21 @@ void ConfigManager::setCoverCacheDirectory(const QString& relativePath)
     LOG_INFO("Cover cache directory changed to: {}", sanitizedPath.toStdString());
 }
 
-// Network settings
-QString ConfigManager::getApiBaseUrl() const
+void ConfigManager::setPlatformDirectory(const QString &relativePath)
 {
-    return m_settings ? m_settings->value("network/api_base_url", "https://api.bilibili.com").toString() : "https://api.bilibili.com";
+    if (!m_settings) return;
+    
+    QString sanitizedPath = sanitizeRelativePath(relativePath);
+    if (!validateAndCreatePath(sanitizedPath)) {
+        LOG_ERROR("Invalid platform directory path: {}", relativePath.toStdString());
+        return;
+    }
+    
+    m_settings->setValue("directories/platform", sanitizedPath);
+    LOG_INFO("Platform directory changed to: {}", sanitizedPath.toStdString());
 }
+
+// Network settings
 
 int ConfigManager::getNetworkTimeout() const
 {
@@ -422,14 +438,6 @@ int ConfigManager::getNetworkTimeout() const
 QString ConfigManager::getProxyUrl() const
 {
     return m_settings ? m_settings->value("network/proxy_url", "").toString() : "";
-}
-
-void ConfigManager::setApiBaseUrl(const QString& url)
-{
-    if (!m_settings) return;
-    m_settings->setValue("network/api_base_url", url);
-    LOG_INFO("API base URL changed to: {}", url.toStdString());
-    emit networkSettingsChanged();
 }
 
 void ConfigManager::setNetworkTimeout(int timeoutMs)

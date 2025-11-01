@@ -8,6 +8,7 @@
 #include <chrono>
 #include <future>
 #include <httplib.h>
+#include <json/json.h>
 
 namespace network
 {
@@ -19,10 +20,11 @@ namespace network
     };
 
     struct BilibiliPageInfo {
-        int64_t cid;
-        int page;
-        std::string part;
-        int duration;
+        int64_t cid; // cid
+        int page; // page number
+        std::string part; // part title
+        int duration; // duration in seconds
+        std::string first_frame; // page cover
     };
 
     struct BiliWbiKeys {
@@ -43,18 +45,12 @@ namespace network
         void disconnect();
         bool isConnected() const;
         
-        // Configuration loading/saving
-        bool loadConfig(const std::string& config_file = "userinfo.json");
-        bool saveConfig(const std::string& config_file = "userinfo.json");
-        
-        // Authentication and cookies
-        bool initializeCookies();
-        bool refreshWbiKeys();
-        
+        bool setPlatformDirectory(const std::string& platform_dir);
         // Bilibili-specific API methods
         std::vector<BilibiliVideoInfo> searchByTitle(const std::string& title, int page = 1);
         std::vector<BilibiliPageInfo> getPagesCid(const std::string& bvid);
         std::string getAudioLink(const std::string& bvid, int64_t cid);
+        std::string getUrlByParams(const std::string& params);
         
         // Streaming operations
         uint64_t getStreamBytesSize(const std::string& url);
@@ -82,12 +78,35 @@ namespace network
         void addCookie(const std::string& name, const std::string& value);
         void removeCookie(const std::string& name);
         void clearCookies();
-        bool saveCookiesToFile(const std::string& filename) const;
-        bool loadCookiesFromFile(const std::string& filename);
-        
+    private:
+        // Configuration loading/saving
+        bool loadConfig(const std::string& config_file = "bilibili.json");
+        bool saveConfig(const std::string& config_file = "bilibili.json");
+        // Authentication and cookies
+        bool initializeCookies();
+        bool refreshWbiKeys();
+
+        bool loadHeaders(const Json::Value& jsonObj);
+        bool saveHeaders(Json::Value& jsonObj) const;
+        bool loadCookies(const Json::Value& jsonObj);
+        bool saveCookies(Json::Value& jsonObj) const;
+        bool loadWbiKeys(const Json::Value& jsonObj);
+        bool saveWbiKeys(Json::Value& jsonObj) const;
+
         // Debug
         std::unordered_map<std::string, std::string> getCurrentHeaders() const;
         std::unordered_map<std::string, std::string> getCurrentCookies() const;
+
+        void updateClientCookies();
+        
+        // Utility methods
+        bool isValidUrl(const std::string& url) const;
+        bool parseUrl(const std::string& url, std::string& host, std::string& path) const;
+        void initializeDefaultHeaders();
+        bool needsWbiRefresh() const;
+        std::string urlEncode(const std::string& str) const;
+        std::string md5Hash(const std::string& str) const;
+        std::string getCurrentTimestamp() const;
 
     private:
         // HTTP client instance
@@ -102,7 +121,7 @@ namespace network
         
         // Configuration
         std::string base_url_;
-        std::string config_file_;
+        std::string platform_dir_;
         int timeout_seconds_;
         bool follow_location_;
         bool connected_;
@@ -120,27 +139,5 @@ namespace network
                             const std::unordered_map<std::string, std::string>& params,
                             std::string& response);
         
-        // Cookie helper methods
-        struct ParsedCookie {
-            std::string name;
-            std::string value;
-            std::string domain;
-            std::string path;
-            std::string expires;
-            bool secure = false;
-            bool httpOnly = false;
-            std::string sameSite;
-        };
-        ParsedCookie parseCookieHeader(const std::string& cookie_header) const;
-        void updateClientCookies();
-        
-        // Utility methods
-        bool isValidUrl(const std::string& url) const;
-        bool parseUrl(const std::string& url, std::string& host, std::string& path) const;
-        void initializeDefaultHeaders();
-        bool needsWbiRefresh() const;
-        std::string urlEncode(const std::string& str) const;
-        std::string md5Hash(const std::string& str) const;
-        std::string getCurrentTimestamp() const;
     };
 } // namespace network

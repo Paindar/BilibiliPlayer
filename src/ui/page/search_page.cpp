@@ -6,7 +6,10 @@
 #include <QAction>
 #include <QKeyEvent>
 #include <QListWidgetItem>
-#include "../../network/network_manager.h"
+#include <log/log_manager.h>
+#include <network/network_manager.h>
+#include <playlist/playlist_manager.h>
+#include <manager/application_context.h>
 
 SearchPage::SearchPage(QWidget *parent)
     : QWidget(parent)
@@ -23,9 +26,10 @@ SearchPage::SearchPage(QWidget *parent)
     connect(ui->searchButton, &QPushButton::clicked, this, &SearchPage::onSearchButtonClicked);
     connect(ui->searchInput, &QLineEdit::returnPressed, this, &SearchPage::onSearchInputReturnPressed);
     connect(ui->scopeButton, &QPushButton::clicked, this, &SearchPage::onScopeButtonClicked);
+    connect(ui->resultsList, &QListWidget::itemClicked, this, &SearchPage::onResultItemClicked);
     
     // Connect NetworkManager signals
-    auto& networkManager = network::NetworkManager::instance();
+    auto& networkManager = NETWORK_MANAGER;
     connect(&networkManager, &network::NetworkManager::searchCompleted,
             this, &SearchPage::onSearchCompleted);
     connect(&networkManager, &network::NetworkManager::searchFailed,
@@ -125,15 +129,13 @@ void SearchPage::performSearch()
     ui->searchButton->setEnabled(false);
     ui->searchInput->setEnabled(false);
     
-    // Start async search using NetworkManager
-    auto& networkManager = network::NetworkManager::instance();
     
     if (m_currentScope == SearchScope::Bilibili) {
         // Use Bilibili search only
-        networkManager.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
+        NETWORK_MANAGER.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
     } else {
         // For "All" scope, search all available sources
-        networkManager.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
+        NETWORK_MANAGER.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
     }
 }
 
@@ -196,6 +198,16 @@ void SearchPage::setupScopeMenu()
     )");
 }
 
+QString SearchPage::convertPlatformEnumToString(network::SupportInterface platform) const
+{
+    switch (platform) {
+    case network::SupportInterface::Bilibili:
+        return "Bilibili";
+    default:
+        return "未知";
+    }
+}
+
 void SearchPage::onSearchCompleted(const QString& keyword)
 {
     
@@ -227,7 +239,7 @@ void SearchPage::onSearchFailed(const QString& keyword, const QString& errorMess
     ui->resultsList->addItem("请检查网络连接或稍后重试");
 }
 
-void SearchPage::onSearchProgress(const QString& keyword, const QList<SearchResult>& results)
+void SearchPage::onSearchProgress(const QString& keyword, const QList<network::SearchResult>& results)
 {
     // Only process progress for current search
     if (keyword != m_currentSearchText) {
@@ -235,17 +247,49 @@ void SearchPage::onSearchProgress(const QString& keyword, const QList<SearchResu
     }
     for (const auto& result : results) {
         QListWidgetItem* item = new QListWidgetItem();
-        item->setText(QString("%1\n上传者: %2 | 平台: %3 | 播放量: %4\n%5")
+        item->setText(QString("%1\n上传者: %2 | 平台: %3 | \n%4")
                       .arg(result.title)
                       .arg(result.uploader)
-                      .arg(result.platform)
-                      .arg(result.viewCount)
+                      .arg(convertPlatformEnumToString(result.platform))
                       .arg(result.description));
+        item->setData(Qt::UserRole, QVariant::fromValue(result));
         ui->resultsList->addItem(item);
     }
     
     // Update the first item with progress status
     if (ui->resultsList->count() > 0) {
         ui->resultsList->item(0)->setText(QString("搜索 \"%1\":").arg(keyword));
+    }
+}
+
+void SearchPage::onResultItemClicked(QListWidgetItem* item)
+{
+    if (!item) {
+        return;
+    }
+
+    network::SearchResult result = item->data(Qt::UserRole).value<network::SearchResult>();
+    auto currentPlaylistUuid = PLAYLIST_MANAGER->getCurrentPlaylist();
+    if (currentPlaylistUuid.isNull()) {
+        LOG_WARN("No current playlist selected");
+        return;
+    }
+    auto playlistOpt = PLAYLIST_MANAGER->getPlaylist(currentPlaylistUuid);
+    if (!playlistOpt.has_value()) {
+        LOG_WARN("No playlist found for current playlist UUID");
+        return;
+    }
+    auto playlist = playlistOpt.value();
+    playlist::SongInfo song{
+        .title = result.title,
+        .uploader = result.uploader,
+        .platform = result.platform,
+        .duration = result.duration,
+        .filepath = QString("%1 - %2").arg(result.uploader, result.title),
+        .args = result.interfaceData
+    };
+    bool success = PLAYLIST_MANAGER->addSongToPlaylist(song, currentPlaylistUuid);
+    if (!success) {
+        LOG_ERROR("Failed to add song to playlist");
     }
 }

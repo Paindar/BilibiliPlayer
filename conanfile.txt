@@ -14,4 +14,3 @@ cpp-httplib/*:with_openssl=True
 
 [generators]
 CMakeDeps
-CMakeToolchain

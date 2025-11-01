@@ -3,13 +3,17 @@
 #include <QObject>
 #include <QString>
 #include <QList>
+#include <QHash>
 #include <QUuid>
 #include <QTimer>
+#include <QReadWriteLock>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QTextStream>
 #include <QFile>
+#include <optional>
+#include <functional>
 #include "playlist.h"
 
 // Forward declarations
@@ -43,28 +47,42 @@ public:
     bool addCategory(const playlist::CategoryInfo& category);
     bool removeCategory(const QUuid& categoryId);
     bool updateCategory(const playlist::CategoryInfo& category);
-    playlist::CategoryInfo getCategory(const QUuid& categoryId) const;
-    QList<playlist::CategoryInfo> getAllCategories() const;
+    std::optional<playlist::CategoryInfo> getCategory(const QUuid& categoryId) const;
+    QList<playlist::CategoryInfo> iterateCategories(std::function<bool(const playlist::CategoryInfo&)> func) const;
     
     // Playlist operations with UUID-based identification
     bool addPlaylist(const playlist::PlaylistInfo& playlist, const QUuid& categoryId);
-    bool removePlaylist(const QUuid& playlistId);
-    bool updatePlaylist(const playlist::PlaylistInfo& playlist);
-    playlist::PlaylistInfo getPlaylist(const QUuid& playlistId) const;
-    QList<playlist::PlaylistInfo> getAllPlaylists() const;
-    QList<playlist::PlaylistInfo> getPlaylistsInCategory(const QUuid& categoryId) const;
-    
+    bool removePlaylist(const QUuid& playlistId, const QUuid& categoryId = QUuid());
+    bool updatePlaylist(const playlist::PlaylistInfo& playlist, const QUuid& categoryId);
+    std::optional<playlist::PlaylistInfo> getPlaylist(const QUuid& playlistId) const;
+    QList<playlist::PlaylistInfo> iteratePlaylistsInCategory(const QUuid& categoryId, std::function<bool(const playlist::PlaylistInfo&)> func) const;
+    // Song operations
+    bool addSongToPlaylist(const playlist::SongInfo& song, const QUuid& playlistId);
+    bool removeSongFromPlaylist(const playlist::SongInfo& song, const QUuid& playlistId);
+    bool updateSongInPlaylist(const playlist::SongInfo& song, const QUuid& playlistId);
+    std::optional<playlist::SongInfo> getSongFromPlaylist(const QUuid& songId, const QUuid& playlistId) const;
+    QList<playlist::SongInfo> iterateSongsInPlaylist(const QUuid& playlistId, std::function<bool(const playlist::SongInfo&)> func) const;
+
     // UUID-based lookup
     bool categoryExists(const QUuid& categoryId) const;
     bool playlistExists(const QUuid& playlistId) const;
+    
+    // Current playlist management
+    QUuid getCurrentPlaylist();
+    void setCurrentPlaylist(const QUuid& playlistId);
 signals:
     void categoryAdded(const playlist::CategoryInfo& category);
     void categoryRemoved(const QUuid& categoryId);
     void categoryUpdated(const playlist::CategoryInfo& category);
     void playlistAdded(const playlist::PlaylistInfo& playlist, const QUuid& categoryId);
-    void playlistRemoved(const QUuid& playlistId);
-    void playlistUpdated(const playlist::PlaylistInfo& playlist);
+    void playlistRemoved(const QUuid& playlistId, const QUuid& categoryId);
+    void playlistUpdated(const playlist::PlaylistInfo& playlist, const QUuid& categoryId);
+    void songAdded(const playlist::SongInfo& song, const QUuid& playlistId);
+    void songRemoved(const playlist::SongInfo& song, const QUuid& playlistId);
+    void songUpdated(const playlist::SongInfo& song, const QUuid& playlistId);
+    void playlistSongsChanged(const QUuid& playlistId);
     void categoriesLoaded(int categoryCount, int playlistCount);
+    void currentPlaylistChanged(const QUuid& playlistId);
 
 private slots:
     void onConfigChanged();
@@ -78,13 +96,25 @@ private:
     bool loadCategoriesFromJsonFile();
     
     // Helper methods
-    playlist::CategoryInfo* findCategoryById(const QUuid& categoryId);
-    const playlist::CategoryInfo* findCategoryById(const QUuid& categoryId) const;
-    playlist::PlaylistInfo* findPlaylistById(const QUuid& playlistId, QUuid* categoryId = nullptr);
-    const playlist::PlaylistInfo* findPlaylistById(const QUuid& playlistId, QUuid* categoryId = nullptr) const;
+    QUuid getPlaylistCategoryId(const QUuid& playlistId) const;
+    
+    // Default setup helpers
+    QUuid ensureDefaultSetup();
     
     ConfigManager* m_configManager;
-    QList<playlist::CategoryInfo> m_categories;
+    
+    // Thread synchronization
+    mutable QReadWriteLock m_dataLock;
+    
+    // Core data storage
+    QHash<QUuid, playlist::CategoryInfo> m_categories;
+    QHash<QUuid, playlist::PlaylistInfo> m_playlists;
+    
+    // Relationship mappings
+    QHash<QUuid, QList<QUuid>> m_categoryPlaylists; // CategoryId -> List of PlaylistIds
+    QHash<QUuid, QList<playlist::SongInfo>> m_playlistSongs;
+    
     QTimer* m_autoSaveTimer;
+    QUuid m_currentPlaylistId;
     bool m_initialized = false;
 };
