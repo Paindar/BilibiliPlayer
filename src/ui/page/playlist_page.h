@@ -31,6 +31,9 @@ public:
     void removeSong(int index);
     void clearSongs();
     
+    // Getters
+    QUuid getCurrentPlaylistId() const { return m_currentPlaylistId; }
+    
     // INavigablePage interface
     QString getNavigationState() const override;
     void restoreFromState(const QString& state) override;

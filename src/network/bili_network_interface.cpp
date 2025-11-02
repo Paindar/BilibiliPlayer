@@ -33,6 +33,7 @@ BilibiliNetworkInterface::~BilibiliNetworkInterface() {
 }
 
 bool BilibiliNetworkInterface::connect(const std::string& base_url) {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     base_url_ = base_url;
     
     try {
@@ -69,6 +70,7 @@ bool BilibiliNetworkInterface::connect(const std::string& base_url) {
 }
 
 void BilibiliNetworkInterface::disconnect() {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     if (connected_) {
         saveConfig();
         http_client_.reset();
@@ -77,11 +79,13 @@ void BilibiliNetworkInterface::disconnect() {
 }
 
 bool BilibiliNetworkInterface::isConnected() const {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     return connected_;
 }
 
 bool BilibiliNetworkInterface::setPlatformDirectory(const std::string &platform_dir)
 {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     if (std::filesystem::exists(platform_dir) && std::filesystem::is_directory(platform_dir)) {
         this->platform_dir_ = platform_dir;
         return true;
@@ -230,6 +234,7 @@ bool BilibiliNetworkInterface::refreshWbiKeys() {
 }
 
 std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std::string& title, int page) {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     if (!connected_) return {};
     
     std::unordered_map<std::string, std::string> params = {
@@ -269,7 +274,8 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
 
 std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid(const std::string& bvid) {
     std::vector<BilibiliPageInfo> pages;
-    
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
+
     if (!connected_) return pages;
     
     std::string query = "bvid=" + urlEncode(bvid);
@@ -296,6 +302,7 @@ std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid(const std::s
 }
 
 std::string BilibiliNetworkInterface::getAudioLink(const std::string& bvid, int64_t cid) {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     if (!connected_) return "";
     
     std::unordered_map<std::string, std::string> params = {
@@ -337,6 +344,7 @@ std::string BilibiliNetworkInterface::getAudioLink(const std::string& bvid, int6
 
 uint64_t BilibiliNetworkInterface::getStreamBytesSize(const std::string &url)
 {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     if (!connected_) return 0;
 
     try {
@@ -471,22 +479,35 @@ bool BilibiliNetworkInterface::streamBilibiliAudio(const std::string& bvid, int6
 // Helper method implementations
 httplib::Headers BilibiliNetworkInterface::getHttplibHeaders() const {
     httplib::Headers headers;
-    for (const auto& pair : headers_) {
-        headers.emplace(pair.first, pair.second);
+
+    // Copy headers under headers mutex (short scope)
+    {
+        std::lock_guard<std::mutex> lock(m_headersMutex_);
+        for (const auto& pair : headers_) {
+            headers.emplace(pair.first, pair.second);
+        }
     }
-    
-    // Note: When using httplib's built-in cookie management, 
-    // we don't need to manually add Cookie header as httplib handles it automatically.
-    // However, for backward compatibility and external clients, we still include it.
-    if (!cookies_.empty()) {
-        headers.emplace("Cookie", getCookieString());
+
+    // Copy cookies under cookies mutex into a string without holding headers mutex
+    std::string cookie_str;
+    {
+        std::lock_guard<std::mutex> lock(m_cookiesMutex_);
+        for (const auto& pair : cookies_) {
+            if (!cookie_str.empty()) cookie_str += "; ";
+            cookie_str += pair.first + "=" + pair.second;
+        }
     }
-    
+
+    if (!cookie_str.empty()) {
+        headers.emplace("Cookie", cookie_str);
+    }
+
     return headers;
 }
 
 std::string BilibiliNetworkInterface::getCookieString() const {
     std::string cookie_str;
+    std::lock_guard<std::mutex> lock(m_cookiesMutex_);
     for (const auto& pair : cookies_) {
         if (!cookie_str.empty()) cookie_str += "; ";
         cookie_str += pair.first + "=" + pair.second;
@@ -636,19 +657,23 @@ bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
 }
 
 void BilibiliNetworkInterface::setHeader(const std::string& key, const std::string& value) {
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
     headers_[key] = value;
 }
 
 void BilibiliNetworkInterface::removeHeader(const std::string& key) {
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
     headers_.erase(key);
 }
 
 void BilibiliNetworkInterface::clearHeaders() {
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
     headers_.clear();
     initializeDefaultHeaders();
 }
 
 void BilibiliNetworkInterface::setTimeout(int timeout_sec) {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     timeout_seconds_ = timeout_sec;
     if (http_client_) {
         http_client_->set_connection_timeout(timeout_sec, 0);
@@ -657,6 +682,7 @@ void BilibiliNetworkInterface::setTimeout(int timeout_sec) {
 }
 
 void BilibiliNetworkInterface::setFollowLocation(bool follow) {
+    std::lock_guard<std::mutex> lock(m_clientMutex_);
     follow_location_ = follow;
     if (http_client_) {
         http_client_->set_follow_location(follow);
@@ -664,16 +690,19 @@ void BilibiliNetworkInterface::setFollowLocation(bool follow) {
 }
 
 void BilibiliNetworkInterface::setUserAgent(const std::string& user_agent) {
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
     headers_["User-Agent"] = user_agent;
 }
 
 std::unordered_map<std::string, std::string> BilibiliNetworkInterface::getCurrentHeaders() const
 {
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
     return headers_;
 }
 
 std::unordered_map<std::string, std::string> BilibiliNetworkInterface::getCurrentCookies() const
 {
+    std::lock_guard<std::mutex> lock(m_cookiesMutex_);
     return cookies_;
 }
 
@@ -681,8 +710,18 @@ void BilibiliNetworkInterface::updateClientCookies() {
     // Since httplib 0.15.3 doesn't have built-in cookie store management,
     // we manually add cookies to each request via headers
     // Update the Cookie header in our headers map for consistency
-    if (!cookies_.empty()) {
-        headers_["Cookie"] = getCookieString();
+    // Build cookie string under cookies mutex, then update headers under headers mutex
+    std::string cookie_str;
+    {
+        std::lock_guard<std::mutex> lock(m_cookiesMutex_);
+        for (const auto& pair : cookies_) {
+            if (!cookie_str.empty()) cookie_str += "; ";
+            cookie_str += pair.first + "=" + pair.second;
+        }
+    }
+    std::lock_guard<std::mutex> lock(m_headersMutex_);
+    if (!cookie_str.empty()) {
+        headers_["Cookie"] = cookie_str;
     } else {
         headers_.erase("Cookie");
     }
@@ -695,21 +734,31 @@ void BilibiliNetworkInterface::syncCookiesFromHttplib() {
 
 void BilibiliNetworkInterface::syncCookiesToHttplib() {
     // In cpp-httplib 0.15.3, we handle cookies manually via headers
+    // updateClientCookies acquires its own locks
     updateClientCookies();
 }
 
 void BilibiliNetworkInterface::addCookie(const std::string& name, const std::string& value) {
-    cookies_[name] = value;
+    {
+        std::lock_guard<std::mutex> lock(m_cookiesMutex_);
+        cookies_[name] = value;
+    }
     updateClientCookies();
 }
 
 void BilibiliNetworkInterface::removeCookie(const std::string& name) {
-    cookies_.erase(name);
+    {
+        std::lock_guard<std::mutex> lock(m_cookiesMutex_);
+        cookies_.erase(name);
+    }
     updateClientCookies();
 }
 
 void BilibiliNetworkInterface::clearCookies() {
-    cookies_.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_cookiesMutex_);
+        cookies_.clear();
+    }
     updateClientCookies();
 }
 

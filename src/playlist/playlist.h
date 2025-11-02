@@ -6,6 +6,12 @@
 
 namespace playlist
 {
+    enum class PlayMode {
+        SingleLoop = 0,     // Loop current song
+        PlaylistLoop = 1,   // Loop entire playlist
+        Random = 2          // Random next song
+    };
+
     struct SongInfo {
         QString title;
         QString uploader; // Artist or uploader name
@@ -44,3 +50,4 @@ namespace playlist
 Q_DECLARE_METATYPE(playlist::SongInfo)
 Q_DECLARE_METATYPE(playlist::PlaylistInfo)
 Q_DECLARE_METATYPE(playlist::CategoryInfo)
+Q_DECLARE_METATYPE(playlist::PlayMode)

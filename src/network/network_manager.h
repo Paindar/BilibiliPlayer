@@ -50,7 +50,9 @@ namespace network
         // Main search orchestrator method - coordinates multiple async searches
         void executeMultiSourceSearch(const QString& keyword, uint selectedInterface, int maxResults = 20);
         void cancelAllSearches();
-        std::future<uint64_t> getStreamSizeAsync(SupportInterface platform, const QString& url);
+        [[deprecated("Use getStreamSizeByParamsAsync instead")]] std::future<uint64_t> getStreamSizeAsync(SupportInterface platform, const QString& url);
+        // Convenience: get size by interface params (e.g., bvid/cid) instead of direct URL
+        std::future<uint64_t> getStreamSizeByParamsAsync(SupportInterface platform, const QString& params);
         std::future<std::shared_ptr<StreamingInputStream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
         std::future<void> downloadAsync(SupportInterface platform, const QString& url, const QString& filepath);
         
@@ -83,5 +85,17 @@ namespace network
         std::condition_variable m_completionCV;
         int m_requestTimeout = 10000; // 10 seconds
         bool m_configured = false;
+        // Background thread management for streaming/watchers
+        mutable std::mutex m_bgMutex;
+        std::vector<std::thread> m_bgThreads;
+        struct DownloadCancelEntry {
+            std::shared_ptr<std::atomic<bool>> token;
+            std::weak_ptr<StreamingAudioBuffer> buffer;
+        };
+        std::vector<DownloadCancelEntry> m_downloadCancelTokens;
+        // Cancel a specific download by token: sets the token and notifies/destroys the
+        // associated buffer so any blocked readers/writers wake. Returns true if an
+        // entry was found and cancelled.
+        bool cancelDownload(const std::shared_ptr<std::atomic<bool>>& token);
     };
 }

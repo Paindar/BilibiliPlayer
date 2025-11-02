@@ -6,10 +6,12 @@
 #include "navigator/navigator.h"
 #include "page/search_page.h"
 #include "page/playlist_page.h"
+#include "page/settings_page.h"
+#include "../manager/application_context.h"
+#include "../audio/audio_player_controller.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include "page/settings_page.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -61,7 +63,22 @@ void MainWindow::setupNavigator()
     });
     
     m_navigator->registerPageFactory(PlaylistPage::PLAYLIST_PAGE_TYPE, [this]() {
-        return new PlaylistPage(this);
+        auto* playlistPage = new PlaylistPage(this);
+        
+        // Connect playlist page signals to audio player controller
+        auto* audioController = AUDIO_PLAYER_CONTROLLER;
+        if (audioController) {
+            connect(playlistPage, &PlaylistPage::songDoubleClicked, 
+                    [audioController, playlistPage](const playlist::SongInfo& song) {
+                // Get current playlist from the page and start playback
+                auto currentPlaylistId = playlistPage->getCurrentPlaylistId();
+                if (!currentPlaylistId.isNull()) {
+                    audioController->playPlaylistFromSong(currentPlaylistId, song);
+                }
+            });
+        }
+        
+        return playlistPage;
     });
     m_navigator->registerPageFactory(SettingsPage::SETTINGS_PAGE_TYPE, [this]() {
         return new SettingsPage(this);

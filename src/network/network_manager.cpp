@@ -5,6 +5,9 @@
 #include <chrono>
 #include <fstream>
 #include <QUrl>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
 
 namespace network
 {
@@ -20,7 +23,37 @@ namespace network
     
     NetworkManager::~NetworkManager()
     {
+        // Signal cancel for searches
         cancelAllSearches();
+
+        // Signal cancel for any active downloads and notify associated buffers
+        {
+            std::lock_guard<std::mutex> lg(m_bgMutex);
+            for (auto &entry : m_downloadCancelTokens) {
+                if (entry.token) entry.token->store(true);
+                if (auto buf = entry.buffer.lock()) {
+                    buf->destroy();
+                }
+            }
+        }
+
+        // Optionally disconnect the underlying interface to accelerate socket shutdown
+        if (m_biliInterface) {
+            m_biliInterface->disconnect();
+        }
+
+        // Join background watcher threads
+        {
+            std::lock_guard<std::mutex> lg(m_bgMutex);
+            for (auto &t : m_bgThreads) {
+                if (t.joinable()) {
+                    t.join();
+                }
+            }
+            m_bgThreads.clear();
+            m_downloadCancelTokens.clear();
+        }
+
         LOG_DEBUG("NetworkManager destroyed");
     }
     
@@ -128,6 +161,36 @@ namespace network
         }
     }
 
+    std::future<uint64_t> NetworkManager::getStreamSizeByParamsAsync(SupportInterface platform, const QString &params)
+    {
+        switch (platform) {
+            case SupportInterface::Bilibili:
+                return std::async(std::launch::async, [this, params]() -> uint64_t {
+                    try {
+                        if (!m_biliInterface->isConnected()) {
+                            bool connected = m_biliInterface->connect();
+                            if (!connected) {
+                                throw std::runtime_error("Failed to connect to Bilibili API");
+                            }
+                        }
+                        std::string url = m_biliInterface->getUrlByParams(params.toStdString());
+                        if (url.empty()) {
+                            throw std::runtime_error("Failed to construct URL from params");
+                        }
+                        return m_biliInterface->getStreamBytesSize(url);
+                    } catch (const std::exception& e) {
+                        LOG_ERROR("Bilibili stream size (by params) error: {}", e.what());
+                        throw; // Re-throw to be handled by caller
+                    }
+                });
+
+            default:
+                return std::async(std::launch::async, []() -> uint64_t {
+                    throw std::runtime_error("Unsupported platform for stream size query (by params)");
+                });
+        }
+    }
+
     std::future<void> NetworkManager::downloadAsync(SupportInterface platform, const QString &url, const QString &filepath)
     {
         switch (platform) {
@@ -141,10 +204,14 @@ namespace network
                             }
                         }
                         
-                        // Open file for writing
-                        std::ofstream file(filepath.toStdString(), std::ios::binary);
+                        // Write to temporary .part file first
+                        const QString tempPath = filepath + ".part";
+                        // Ensure target directory exists
+                        QFileInfo fi(filepath);
+                        QDir().mkpath(fi.absolutePath());
+                        std::ofstream file(tempPath.toStdString(), std::ios::binary);
                         if (!file.is_open()) {
-                            throw std::runtime_error("Failed to open file for writing: " + filepath.toStdString());
+                            throw std::runtime_error("Failed to open file for writing: " + tempPath.toStdString());
                         }
                         
                         // Use asyncDownloadStream with a callback that writes to file
@@ -166,7 +233,22 @@ namespace network
                         file.close();
                         
                         if (!success) {
+                            // Remove partial file on failure
+                            QFile::remove(tempPath);
                             throw std::runtime_error("Download failed");
+                        }
+                        // Move .part to final path (best-effort atomic on same volume)
+                        if (QFile::exists(filepath)) {
+                            QFile::remove(filepath);
+                        }
+                        if (!QFile::rename(tempPath, filepath)) {
+                            // Fallback: copy then remove
+                            if (QFile::copy(tempPath, filepath)) {
+                                QFile::remove(tempPath);
+                            } else {
+                                QFile::remove(tempPath);
+                                throw std::runtime_error("Failed to finalize download file move");
+                            }
                         }
                         
                         LOG_INFO("Download completed successfully: {}", filepath.toStdString());
@@ -203,12 +285,17 @@ namespace network
                         const size_t buffer_size = 5 * 1024 * 1024;
                         // Create streaming input that wraps the buffer
                         auto streaming_buffer = std::make_shared<StreamingAudioBuffer>(buffer_size);
-                        auto streaming_input = std::make_shared<StreamingInputStream>(streaming_buffer.get());
+                        auto streaming_input = std::make_shared<StreamingInputStream>(streaming_buffer);
                         std::shared_ptr<std::ofstream> file_stream;
+                        QString temp_savepath;
                         if (!savepath.isEmpty()) {
-                            file_stream = std::make_shared<std::ofstream>(savepath.toStdString(), std::ios::binary);
+                            temp_savepath = savepath + ".part";
+                            // Ensure parent directory exists
+                            QFileInfo fi(savepath);
+                            QDir().mkpath(fi.absolutePath());
+                            file_stream = std::make_shared<std::ofstream>(temp_savepath.toStdString(), std::ios::binary);
                             if (!file_stream->is_open()) {
-                                throw std::runtime_error("Failed to open file for writing: " + savepath.toStdString());
+                                throw std::runtime_error("Failed to open file for writing: " + temp_savepath.toStdString());
                             }
                         }
                         // Get actual URL from params
@@ -216,21 +303,79 @@ namespace network
                         if (url.empty()) {
                             throw std::runtime_error("Failed to get audio URL from parameters");
                         }
-                        // Start async download to the streaming buffer
-                        auto download_future = m_biliInterface->asyncDownloadStream(url, 
-                            [streaming_buffer, file_stream](const char* data, size_t size) -> bool {
+                        // Start async download to the streaming buffer with a cancel token
+                        auto cancel_token = std::make_shared<std::atomic<bool>>(false);
+                        {
+                            std::lock_guard<std::mutex> lg(m_bgMutex);
+                            m_downloadCancelTokens.push_back({ cancel_token, streaming_buffer });
+                        }
+
+                        auto download_future = m_biliInterface->asyncDownloadStream(url,
+                            [streaming_buffer, file_stream, cancel_token](const char* data, size_t size) -> bool {
+                                // Check cancellation request
+                                if (cancel_token && cancel_token->load()) return false;
                                 if (data && size > 0) {
+                                    // Write to streaming buffer (blocking until space available or destroyed)
                                     streaming_buffer->write(data, size);
                                     if (file_stream && file_stream->is_open()) {
                                         file_stream->write(data, size);
                                     }
                                 }
-
                                 return true; // Continue download
                             }
                         );
-                        // Note: The download continues in background, the StreamingInputStream
-                        // will block on read() calls until data is available
+
+                        // Spawn a lightweight watcher to finalize file and mark buffer complete
+                        std::thread watcher_thread([this, streaming_buffer, file_stream, savepath, temp_savepath, cancel_token, df = std::move(download_future)]() mutable {
+                            try {
+                                bool ok = df.get();
+                                if (file_stream && file_stream->is_open()) {
+                                    file_stream->flush();
+                                    file_stream->close();
+                                }
+                                if (!savepath.isEmpty()) {
+                                    if (ok) {
+                                        // Move .part to final
+                                        if (QFile::exists(savepath)) {
+                                            QFile::remove(savepath);
+                                        }
+                                        if (!QFile::rename(temp_savepath, savepath)) {
+                                            if (QFile::copy(temp_savepath, savepath)) {
+                                                QFile::remove(temp_savepath);
+                                            } else {
+                                                QFile::remove(temp_savepath);
+                                            }
+                                        }
+                                    } else {
+                                        // Remove partial on failure
+                                        QFile::remove(temp_savepath);
+                                    }
+                                }
+                            } catch (const std::exception& ex) {
+                                LOG_ERROR("Streaming finalize error: {}", ex.what());
+                            }
+                            // In any case, mark buffer completion to unblock readers
+                            streaming_buffer->setDownloadComplete();
+
+                            // Remove cancel token from active list (best-effort)
+                            try {
+                                std::lock_guard<std::mutex> lg(m_bgMutex);
+                                auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
+                                    [&cancel_token](const DownloadCancelEntry& e) { return e.token == cancel_token; });
+                                if (it != m_downloadCancelTokens.end()) m_downloadCancelTokens.erase(it);
+                            } catch (...) {
+                                // ignore
+                            }
+                        });
+
+                        // Track watcher thread so we can join on shutdown
+                        {
+                            std::lock_guard<std::mutex> lg(m_bgMutex);
+                            m_bgThreads.emplace_back(std::move(watcher_thread));
+                        }
+                        // Note: The download continues in background, the StreamingInputStream will
+                        // block on read() calls until data is available. A watcher thread ensures
+                        // buffer completion is signaled and optional file is finalized.
                         
                         LOG_INFO("Streaming started for URL: {}", url);
                         return streaming_input;
@@ -247,6 +392,30 @@ namespace network
                     throw std::runtime_error("Unsupported platform for streaming");
                 });
         }
+    }
+
+    bool NetworkManager::cancelDownload(const std::shared_ptr<std::atomic<bool>>& token)
+    {
+        if (!token) return false;
+        std::lock_guard<std::mutex> lg(m_bgMutex);
+        auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
+            [&token](const DownloadCancelEntry& e) { return e.token == token; });
+        if (it == m_downloadCancelTokens.end()) {
+            // Not found; still set token to be safe
+            token->store(true);
+            return false;
+        }
+
+        // Atomically request cancel
+        it->token->store(true);
+        if (auto buf = it->buffer.lock()) {
+            // wake blocked readers/writers
+            buf->destroy();
+        }
+
+        // Erase the entry from the active list; caller may still hold token
+        m_downloadCancelTokens.erase(it);
+        return true;
     }
 
     std::future<QList<SearchResult>> NetworkManager::performBilibiliSearchAsync(

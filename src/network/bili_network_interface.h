@@ -9,6 +9,7 @@
 #include <future>
 #include <httplib.h>
 #include <json/json.h>
+#include <mutex>
 
 namespace network
 {
@@ -139,5 +140,12 @@ namespace network
                             const std::unordered_map<std::string, std::string>& params,
                             std::string& response);
         
+        // Mutexes to protect internal resources accessed from multiple threads
+        // - m_clientMutex_ protects http_client_, connected_, base_url_, timeout and follow flags
+        // - m_headersMutex_ protects headers_
+        // - m_cookiesMutex_ protects cookies_
+        mutable std::mutex m_clientMutex_;
+        mutable std::mutex m_headersMutex_;
+        mutable std::mutex m_cookiesMutex_;
     };
 } // namespace network

@@ -125,7 +125,10 @@ std::streampos StreamingInputStream::StreamingStreamBuf::seekpos(
 }
 
 StreamingInputStream::StreamingInputStream(StreamingAudioBuffer* buffer) 
-    : std::istream(&buf_), buf_(buffer) {}
+    : std::istream(&buf_), owner_(nullptr), buf_(buffer) {}
+
+StreamingInputStream::StreamingInputStream(std::shared_ptr<StreamingAudioBuffer> buffer)
+    : std::istream(&buf_), owner_(std::move(buffer)), buf_(owner_.get()) {}
 
 std::streampos StreamingInputStream::tellg() {
     // For streaming, we don't know the total size

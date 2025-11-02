@@ -41,6 +41,8 @@ set(PROJECT_SOURCES
     audio/ffmpeg_decoder.h
     audio/wasapi_audio_player.cpp
     audio/wasapi_audio_player.h
+    audio/audio_player_controller.cpp
+    audio/audio_player_controller.h
     
     # Streaming components
     stream/streaming_audio_buffer.cpp

@@ -2,6 +2,7 @@
 #include "../playlist/playlist_manager.h"
 #include "../config/config_manager.h"
 #include "../network/network_manager.h"
+#include "../audio/audio_player_controller.h"
 #include "../log/log_manager.h"
 #include <QTimer>
 #include <QStandardPaths>
@@ -98,6 +99,9 @@ void ApplicationContext::initializePhase3()
     // 4. PlaylistManager - depends on config and potentially network
     initializePlaylistManager();
     
+    // 5. AudioPlayerController - depends on PlaylistManager and NetworkManager
+    initializeAudioPlayerController();
+    
     m_currentPhase = 3;
     emit phaseInitialized(3);
     emit dataManagersReady();
@@ -144,6 +148,16 @@ void ApplicationContext::initializePlaylistManager()
     LOG_DEBUG("PlaylistManager initialized and playlists loaded");
 }
 
+void ApplicationContext::initializeAudioPlayerController()
+{
+    LOG_DEBUG("Creating AudioPlayerController...");
+    
+    // AudioPlayerController needs PlaylistManager and NetworkManager
+    m_audioPlayerController = std::make_unique<AudioPlayerController>(this);
+    
+    LOG_DEBUG("AudioPlayerController initialized");
+}
+
 void ApplicationContext::setupManagerConnections()
 {
     LOG_DEBUG("Setting up cross-manager signal connections...");
@@ -187,9 +201,10 @@ void ApplicationContext::shutdown()
     }
     
     // Shutdown in reverse dependency order
-    m_playlistManager.reset();    // Phase 3
+    m_audioPlayerController.reset(); // Phase 3 - Stop audio first
+    m_playlistManager.reset();       // Phase 3
     // NetworkManager is singleton - no cleanup needed here
-    m_configManager.reset();      // Phase 1
+    m_configManager.reset();         // Phase 1
     
     m_initialized = false;
     m_currentPhase = 0;

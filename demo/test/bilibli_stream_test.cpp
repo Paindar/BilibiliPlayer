@@ -188,8 +188,8 @@ int main()
     if (streaming_buffer->hasEnoughData(min_buffer_for_playback)) {
         std::cout << "✅ Sufficient buffer available! Starting real-time playback..." << std::endl;
         
-        // Create streaming input for FFmpeg decoder
-        auto streaming_input = std::make_shared<StreamingInputStream>(streaming_buffer.get());
+    // Create streaming input for FFmpeg decoder (pass shared_ptr to ensure buffer lifetime)
+    auto streaming_input = std::make_shared<StreamingInputStream>(streaming_buffer);
         
         // Create decoder outside the thread so it stays alive
         auto decoder = std::make_shared<FFmpegStreamDecoder>();

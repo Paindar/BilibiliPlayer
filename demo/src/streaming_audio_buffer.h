@@ -59,10 +59,16 @@ private:
                               std::ios_base::openmode which = std::ios_base::in) override;
     };
     
+    // Keep an owning shared_ptr option so callers can pass ownership and
+    // the streambuf will keep the buffer alive while the stream exists.
+    std::shared_ptr<StreamingAudioBuffer> owner_;
     StreamingStreamBuf buf_;
-    
+
 public:
     explicit StreamingInputStream(StreamingAudioBuffer* buffer);
+    // Shared-ownership constructor: takes ownership of the buffer to ensure
+    // it remains alive while the stream/decoder uses it.
+    explicit StreamingInputStream(std::shared_ptr<StreamingAudioBuffer> buffer);
     
     // Get current position in stream (non-virtual, hides base method)
     std::streampos tellg();

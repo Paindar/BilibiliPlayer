@@ -7,6 +7,7 @@
 // Forward declarations
 class PlaylistManager;
 class ConfigManager;
+class AudioPlayerController;
 
 // Network namespace forward declaration
 namespace network {
@@ -35,6 +36,7 @@ public:
     // Manager access (returns nullptr if not yet initialized)
     PlaylistManager* playlistManager() const { return m_playlistManager.get(); }
     ConfigManager* configManager() const { return m_configManager.get(); }
+    AudioPlayerController* audioPlayerController() const { return m_audioPlayerController.get(); }
     // NetworkManager uses singleton pattern - access via NetworkManager::instance()
     
     // Check initialization status
@@ -60,6 +62,7 @@ private:
     void initializeConfigManager(const QString& workspaceDir);
     void initializeNetworkManager();
     void initializePlaylistManager();
+    void initializeAudioPlayerController();
     
     // Cross-manager connections
     void setupManagerConnections();
@@ -67,6 +70,7 @@ private:
     // Smart pointers for automatic cleanup
     std::unique_ptr<ConfigManager> m_configManager;
     std::unique_ptr<PlaylistManager> m_playlistManager;
+    std::unique_ptr<AudioPlayerController> m_audioPlayerController;
     
     bool m_initialized = false;
     int m_currentPhase = 0;
@@ -76,4 +80,5 @@ private:
 #define APP_CONTEXT ApplicationContext::instance()
 #define PLAYLIST_MANAGER APP_CONTEXT.playlistManager()
 #define CONFIG_MANAGER APP_CONTEXT.configManager()
+#define AUDIO_PLAYER_CONTROLLER APP_CONTEXT.audioPlayerController()
 #define NETWORK_MANAGER network::NetworkManager::instance()

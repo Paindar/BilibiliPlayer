@@ -13,21 +13,35 @@ class StreamingAudioBuffer {
 private:
     CircularBuffer<uint8_t> buffer_;
     mutable std::mutex mutex_;
-    std::condition_variable cv_;
+    // Two condition variables: one for writers (not full) and one for readers (not empty)
+    std::condition_variable cv_not_full_;
+    std::condition_variable cv_not_empty_;
     std::atomic<bool> download_complete_{false};
     std::atomic<size_t> total_written_{0};
+    std::atomic<bool> destroyed_{false};
     
 public:
     explicit StreamingAudioBuffer(size_t capacity);
+    ~StreamingAudioBuffer();
+    // Non-copyable
+    StreamingAudioBuffer(const StreamingAudioBuffer&) = delete;
+    StreamingAudioBuffer& operator=(const StreamingAudioBuffer&) = delete;
     
     // Producer: Write data from download thread
+    // Legacy API: blocks until all bytes are written or buffer destroyed
     void write(const char* data, size_t size);
-    
+    // (No cancellable overload) write blocks until bytes written or destroyed
+
     // Consumer: Read data for playback thread
+    // Legacy API: blocks until requested bytes are read, EOF, or buffer destroyed
     size_t read(uint8_t* data, size_t size);
+    // (No cancellable overload) read blocks until bytes are available, EOF, or destroyed
+    void destroy();
     
     // Check if we have enough data to start playback
     bool hasEnoughData(size_t min_bytes) const;
+    // Wait until at least min_bytes are available or timeout_ms elapses
+    bool waitForEnoughData(size_t min_bytes, int timeout_ms);
     
     void setDownloadComplete();
     
@@ -42,14 +56,19 @@ class StreamingInputStream : public std::istream {
 private:
     class StreamingStreamBuf : public std::streambuf {
     private:
-        StreamingAudioBuffer* buffer_;
+        std::shared_ptr<StreamingAudioBuffer> buffer_;
         std::vector<char> read_buffer_;
         std::streampos current_pos_;
         
     public:
-        explicit StreamingStreamBuf(StreamingAudioBuffer* buffer);
+        explicit StreamingStreamBuf(std::shared_ptr<StreamingAudioBuffer> buffer);
         
         std::streampos getCurrentPos() const { return current_pos_; }
+        // Expose buffer state helpers
+        bool hasEnoughData(size_t min_bytes) const { return buffer_->hasEnoughData(min_bytes); }
+        size_t available() const { return buffer_->available(); }
+        bool isDownloadComplete() const { return buffer_->isDownloadComplete(); }
+        bool waitForEnoughData(size_t min_bytes, int timeout_ms) { return buffer_->waitForEnoughData(min_bytes, timeout_ms); }
         
     protected:
         int_type underflow() override;
@@ -60,9 +79,14 @@ private:
     };
     
     StreamingStreamBuf buf_;
-    
+
 public:
-    explicit StreamingInputStream(StreamingAudioBuffer* buffer);
+    // Construct a streaming input stream that reads from the provided
+    // shared StreamingAudioBuffer. The stream owns its streambuf (member
+    // `buf_`) which itself keeps a shared_ptr to the audio buffer. This
+    // ensures the streambuf pointer passed to std::istream remains valid
+    // for the lifetime of this object.
+    explicit StreamingInputStream(std::shared_ptr<StreamingAudioBuffer> buffer);
     
     // Get current position in stream (non-virtual, hides base method)
     std::streampos tellg();
@@ -70,4 +94,10 @@ public:
     // Custom seekg methods for streaming (non-virtual, hides base methods)
     std::istream& seekg(std::streampos pos);
     std::istream& seekg(std::streamoff off, std::ios_base::seekdir way);
+
+    // Convenience wrappers for buffering state
+    bool hasEnoughData(size_t min_bytes) const { return buf_.hasEnoughData(min_bytes); }
+    size_t available() const { return buf_.available(); }
+    bool isDownloadComplete() const { return buf_.isDownloadComplete(); }
+    bool waitForEnoughData(size_t min_bytes, int timeout_ms) { return buf_.waitForEnoughData(min_bytes, timeout_ms); }
 };

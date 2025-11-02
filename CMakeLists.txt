@@ -19,6 +19,8 @@ set(TS_FILES resource/lang/BilibiliPlayer_zh_CN.ts)
 add_subdirectory(demo)
 # Add the src subdirectory
 add_subdirectory(src)
+# Add tests
+add_subdirectory(test)
 
 # Translation files will be handled in the src directory
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
