@@ -37,11 +37,6 @@ namespace network
             }
         }
 
-        // Optionally disconnect the underlying interface to accelerate socket shutdown
-        if (m_biliInterface) {
-            m_biliInterface->disconnect();
-        }
-
         // Join background watcher threads
         {
             std::lock_guard<std::mutex> lg(m_bgMutex);
@@ -139,18 +134,7 @@ namespace network
         switch (platform) {
             case SupportInterface::Bilibili:
                 return std::async(std::launch::async, [this, url]() -> uint64_t {
-                    try {
-                        if (!m_biliInterface->isConnected()) {
-                            bool connected = m_biliInterface->connect();
-                            if (!connected) {
-                                throw std::runtime_error("Failed to connect to Bilibili API");
-                            }
-                        }
-                        return m_biliInterface->getStreamBytesSize(url.toStdString());
-                    } catch (const std::exception& e) {
-                        LOG_ERROR("Bilibili stream size query error: {}", e.what());
-                        throw; // Re-throw to be handled by caller
-                    }
+                    return m_biliInterface->getStreamBytesSize(url.toStdString());
                 });
                 
             default:
@@ -167,13 +151,7 @@ namespace network
             case SupportInterface::Bilibili:
                 return std::async(std::launch::async, [this, params]() -> uint64_t {
                     try {
-                        if (!m_biliInterface->isConnected()) {
-                            bool connected = m_biliInterface->connect();
-                            if (!connected) {
-                                throw std::runtime_error("Failed to connect to Bilibili API");
-                            }
-                        }
-                        std::string url = m_biliInterface->getUrlByParams(params.toStdString());
+                        std::string url = m_biliInterface->getAudioUrlByParams(params.toStdString());
                         if (url.empty()) {
                             throw std::runtime_error("Failed to construct URL from params");
                         }
@@ -197,13 +175,6 @@ namespace network
             case SupportInterface::Bilibili:
                 return std::async(std::launch::async, [this, url, filepath]() -> void {
                     try {
-                        if (!m_biliInterface->isConnected()) {
-                            bool connected = m_biliInterface->connect();
-                            if (!connected) {
-                                throw std::runtime_error("Failed to connect to Bilibili API");
-                            }
-                        }
-                        
                         // Write to temporary .part file first
                         const QString tempPath = filepath + ".part";
                         // Ensure target directory exists
@@ -274,13 +245,6 @@ namespace network
 
                 return std::async(std::launch::async, [this, params, savepath]() -> std::shared_ptr<StreamingInputStream> {
                     try {
-                        if (!m_biliInterface->isConnected()) {
-                            bool connected = m_biliInterface->connect();
-                            if (!connected) {
-                                throw std::runtime_error("Failed to connect to Bilibili API");
-                            }
-                        }
-                        
                         // Create streaming buffer (5MB buffer for smooth streaming)
                         const size_t buffer_size = 5 * 1024 * 1024;
                         // Create streaming input that wraps the buffer
@@ -299,7 +263,7 @@ namespace network
                             }
                         }
                         // Get actual URL from params
-                        std::string url = m_biliInterface->getUrlByParams(params.toStdString());
+                        std::string url = m_biliInterface->getAudioUrlByParams(params.toStdString());
                         if (url.empty()) {
                             throw std::runtime_error("Failed to get audio URL from parameters");
                         }
@@ -421,12 +385,6 @@ namespace network
     std::future<QList<SearchResult>> NetworkManager::performBilibiliSearchAsync(
         const QString &keyword, int maxResults, std::atomic<bool> &cancelFlag)
     {
-        if (!m_biliInterface->isConnected()) {
-            bool connected = m_biliInterface->connect();
-            if (!connected) {
-                throw std::runtime_error("Failed to connect to Bilibili API");
-            }
-        }
         if (cancelFlag.load()) {
             return {};
         }

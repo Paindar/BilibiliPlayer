@@ -66,6 +66,10 @@ set(PROJECT_SOURCES
 
     # Utility components
     util/circular_buffer.hpp
+    util/md5.h
+    util/md5.cpp
+    util/urlencode.h
+    util/urlencode.cpp
 )
 
 # Find required dependencies

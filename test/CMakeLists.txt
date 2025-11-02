@@ -4,10 +4,12 @@ project(BilibiliPlayerTests)
 
 # Prefer the Catch2 package provided by Conan (CMakeDeps). If not available, the project
 # can optionally fall back to other methods, but with Conan in use this is unnecessary.
+find_package(httplib REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui REQUIRED)
+find_package(JsonCpp REQUIRED)
 
 ## Single combined test executable for the project
 add_executable(BilibiliPlayerTest
@@ -17,6 +19,8 @@ add_executable(BilibiliPlayerTest
 	fake_network_producer_test.cpp
 	config_manager_test.cpp
 	playlist_manager_test.cpp
+	test_http_pool.cpp
+	test_cookie_jar.cpp
 )
 
 # Include project source headers (handled per-target below)
@@ -45,8 +49,23 @@ target_link_libraries(BilibiliPlayerTest PRIVATE
 	Qt${QT_VERSION_MAJOR}::Gui
 	spdlog::spdlog
 	fmt::fmt
+    httplib::httplib
+    JsonCpp::JsonCpp
 )
 target_include_directories(BilibiliPlayerTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# Build network implementation into a small static library for tests and enable
+# UNIT_TEST define so test helpers are present.
+add_library(network_impl STATIC
+	${CMAKE_SOURCE_DIR}/src/network/bili_network_interface.cpp
+	${CMAKE_SOURCE_DIR}/src/util/md5.cpp
+	${CMAKE_SOURCE_DIR}/src/util/urlencode.cpp
+)
+target_include_directories(network_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(network_impl PRIVATE UNIT_TEST)
+target_link_libraries(network_impl PRIVATE httplib::httplib JsonCpp::JsonCpp OpenSSL::SSL OpenSSL::Crypto spdlog::spdlog fmt::fmt)
+
+target_link_libraries(BilibiliPlayerTest PRIVATE network_impl)
 
 # Use C++17
 set_target_properties(BilibiliPlayerTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
