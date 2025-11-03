@@ -177,18 +177,30 @@ std::streampos StreamingInputStream::StreamingStreamBuf::seekpos(
     return std::streampos(-1);
 }
 
+void StreamingInputStream::StreamingStreamBuf::destroyBuffer() {
+    if (buffer_) buffer_->destroy();
+}
+
 StreamingInputStream::StreamingInputStream(std::shared_ptr<StreamingAudioBuffer> buffer)
-    : std::istream(nullptr), buf_(buffer)
+    : std::istream(nullptr)
 {
+    buf_ = std::make_shared<StreamingStreamBuf>(buffer);
     // rdbuf must be set after buf_ has been constructed (base classes are
     // initialized before members), so set it here.
-    rdbuf(&buf_);
+    rdbuf(buf_.get());
+}
+
+void StreamingInputStream::destroyBuffer() {
+    if (buf_) {
+        // Delegate to the streambuf which has access to the buffer
+        buf_->destroyBuffer();
+    }
 }
 
 std::streampos StreamingInputStream::tellg() {
     // For streaming, we don't know the total size
     // Return current read position in the buffer
-    return buf_.getCurrentPos();
+    return buf_->getCurrentPos();
 }
 
 std::istream& StreamingInputStream::seekg(std::streampos pos) {

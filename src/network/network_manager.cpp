@@ -17,7 +17,6 @@ namespace network
     {
         // Initialize BilibiliNetworkInterface
         m_biliInterface = std::make_unique<BilibiliNetworkInterface>();
-        m_biliInterface->setTimeout(m_requestTimeout / 1000); // Convert to seconds
         LOG_DEBUG("NetworkManager created");
     }
     
@@ -69,6 +68,13 @@ namespace network
         if (m_biliInterface) {
             m_biliInterface->setPlatformDirectory(platformDir.toStdString());
             m_biliInterface->setTimeout(timeoutMs / 1000); // Convert to seconds
+            if (!proxyUrl.isEmpty()) {
+                // TODO: Implement proxy support
+            }
+            if (!m_biliInterface->loadConfig()) {
+                LOG_WARN("BilibiliNetworkInterface failed to load configuration");
+                m_biliInterface.reset();
+            }
         }
         
         // TODO: Configure API base URL and proxy if needed by underlying interfaces
@@ -129,22 +135,6 @@ namespace network
         m_cancelFlag = true;
     }
 
-    std::future<uint64_t> NetworkManager::getStreamSizeAsync(SupportInterface platform, const QString &url)
-    {
-        switch (platform) {
-            case SupportInterface::Bilibili:
-                return std::async(std::launch::async, [this, url]() -> uint64_t {
-                    return m_biliInterface->getStreamBytesSize(url.toStdString());
-                });
-                
-            default:
-                // Return a future that immediately throws an exception
-                return std::async(std::launch::async, []() -> uint64_t {
-                    throw std::runtime_error("Unsupported platform for stream size query");
-                });
-        }
-    }
-
     std::future<uint64_t> NetworkManager::getStreamSizeByParamsAsync(SupportInterface platform, const QString &params)
     {
         switch (platform) {
@@ -153,7 +143,8 @@ namespace network
                     try {
                         std::string url = m_biliInterface->getAudioUrlByParams(params.toStdString());
                         if (url.empty()) {
-                            throw std::runtime_error("Failed to construct URL from params");
+                            LOG_ERROR("Failed to get audio URL from parameters for stream size query");
+                            return 0;
                         }
                         return m_biliInterface->getStreamBytesSize(url);
                     } catch (const std::exception& e) {

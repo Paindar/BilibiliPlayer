@@ -556,6 +556,10 @@ void AudioPlayerController::stopCurrentSongUnsafe()
     if (m_decoder) {
         m_decoder->stop();
     }
+
+    if (m_currentStream) {
+        m_currentStream.reset();
+    }
     
     if (m_audioPlayer) {
         m_audioPlayer->stop();

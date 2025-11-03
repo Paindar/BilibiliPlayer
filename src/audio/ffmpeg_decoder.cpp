@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <log/log_manager.h>
+#include "../stream/streaming_audio_buffer.h"
 
 FFmpegStreamDecoder::FFmpegStreamDecoder()
     : format_ctx_(nullptr)
@@ -117,10 +118,13 @@ void FFmpegStreamDecoder::streamReaderLoop() {
         if (input_stream_->fail()) {
             // This is a streaming input - read chunks as they become available
             input_stream_->clear(); // Clear fail state
-            
+
+            stream_eof_ = false; // Mark as not complete
+
             char buffer[8192];
-            while (!stop_stream_reader_) {
+            while (!stop_stream_reader_.load()) {
                 input_stream_->read(buffer, sizeof(buffer));
+                if (input_stream_ == nullptr) break; // Check if stream was closed
                 auto bytes_read = input_stream_->gcount();
                 
                 if (bytes_read > 0) {
@@ -132,9 +136,6 @@ void FFmpegStreamDecoder::streamReaderLoop() {
                 } else if (input_stream_->eof()) {
                     stream_eof_ = true;
                     break;
-                } else {
-                    // No data available yet, wait a bit
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             }
         } else {
@@ -154,7 +155,7 @@ void FFmpegStreamDecoder::streamReaderLoop() {
                 stream_buffer_.resize(static_cast<size_t>(bytes_read));
             }
             
-            stream_eof_ = true; // Mark as complete
+            stream_eof_ = true;
         }
     }
 }
@@ -260,28 +261,40 @@ bool FFmpegStreamDecoder::pause() {
 
 bool FFmpegStreamDecoder::stop() {
     if (!playing_) return true;
-    
+    // Signal all threads to stop. Make sure the stream reader is asked to stop
+    // early so any blocking read can be avoided (reader loop checks this flag).
     should_stop_ = true;
+    stop_stream_reader_.store(true);
     playing_ = false;
     paused_ = false;
-    
-    // Wake up threads
+
+    // If the input stream is a StreamingInputStream, destroy its buffer to
+    // wake any blocked readers (this will make underflow() return EOF).
+    if (input_stream_) {
+        auto sis = dynamic_cast<StreamingInputStream*>(input_stream_.get());
+        if (sis) {
+            std::cerr << "FFmpegStreamDecoder::stop(): destroying streaming input buffer" << std::endl;
+            sis->destroyBuffer();
+        }
+    }
+
+    // Wake up threads waiting on condition variables.
     frame_cv_.notify_all();
-    
-    // Wait for threads to finish
+
+    // Wait for decode/playback threads to finish.
     if (decode_thread_.joinable()) {
         decode_thread_.join();
     }
     if (playback_thread_.joinable()) {
         playback_thread_.join();
     }
-    
+
     // Clear frame queue
     std::lock_guard<std::mutex> lock(frame_mutex_);
     while (!frame_queue_.empty()) {
         frame_queue_.pop();
     }
-    
+
     return true;
 }
 
@@ -593,9 +606,9 @@ bool FFmpegStreamDecoder::isEOF() const {
 void FFmpegStreamDecoder::cleanupFFmpeg() {
     // Stop stream reader thread
     if (stream_reader_thread_.joinable()) {
-        stop_stream_reader_ = true;
+        stop_stream_reader_.store(true);
         stream_reader_thread_.join();
-        stop_stream_reader_ = false;
+        stop_stream_reader_.store(false);
     }
     
     // Clean up resampler
@@ -615,10 +628,14 @@ void FFmpegStreamDecoder::cleanupFFmpeg() {
     
     // Clean up AVIO
     if (avio_ctx_) {
+        // avio_context_free will free the internal buffer if one was
+        // provided to avio_alloc_context. To avoid double-freeing the
+        // same buffer, clear our pointer after freeing the context.
         avio_context_free(&avio_ctx_);
-    }
-    
-    if (avio_buffer_) {
+        avio_buffer_ = nullptr;
+    } else if (avio_buffer_) {
+        // If we created a buffer but never attached an AVIO context,
+        // free it here.
         av_free(avio_buffer_);
         avio_buffer_ = nullptr;
     }
@@ -638,6 +655,12 @@ int FFmpegStreamDecoder::readPacket(void* opaque, uint8_t* buf, int buf_size) {
     if (!decoder || buf_size <= 0) {
         std::cerr << "readPacket: Invalid parameters" << std::endl;
         return AVERROR(EINVAL);
+    }
+
+    // If we've been asked to stop, return an I/O error so FFmpeg can abort
+    if (decoder->should_stop_ || decoder->stop_stream_reader_.load()) {
+        std::cerr << "readPacket: stop requested, returning EIO" << std::endl;
+        return AVERROR(EIO);
     }
     
     size_t current_pos = decoder->buffer_read_pos_.load();

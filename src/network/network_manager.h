@@ -50,7 +50,6 @@ namespace network
         // Main search orchestrator method - coordinates multiple async searches
         void executeMultiSourceSearch(const QString& keyword, uint selectedInterface, int maxResults = 20);
         void cancelAllSearches();
-        [[deprecated("Use getStreamSizeByParamsAsync instead")]] std::future<uint64_t> getStreamSizeAsync(SupportInterface platform, const QString& url);
         // Convenience: get size by interface params (e.g., bvid/cid) instead of direct URL
         std::future<uint64_t> getStreamSizeByParamsAsync(SupportInterface platform, const QString& params);
         std::future<std::shared_ptr<StreamingInputStream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");

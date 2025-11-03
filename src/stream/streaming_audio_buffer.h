@@ -69,6 +69,8 @@ private:
         size_t available() const { return buffer_->available(); }
         bool isDownloadComplete() const { return buffer_->isDownloadComplete(); }
         bool waitForEnoughData(size_t min_bytes, int timeout_ms) { return buffer_->waitForEnoughData(min_bytes, timeout_ms); }
+        // Destroy underlying buffer to wake any blocked readers/writers
+        void destroyBuffer();
         
     protected:
         int_type underflow() override;
@@ -78,14 +80,9 @@ private:
                               std::ios_base::openmode which = std::ios_base::in) override;
     };
     
-    StreamingStreamBuf buf_;
+    std::shared_ptr<StreamingStreamBuf> buf_;
 
 public:
-    // Construct a streaming input stream that reads from the provided
-    // shared StreamingAudioBuffer. The stream owns its streambuf (member
-    // `buf_`) which itself keeps a shared_ptr to the audio buffer. This
-    // ensures the streambuf pointer passed to std::istream remains valid
-    // for the lifetime of this object.
     explicit StreamingInputStream(std::shared_ptr<StreamingAudioBuffer> buffer);
     
     // Get current position in stream (non-virtual, hides base method)
@@ -96,8 +93,10 @@ public:
     std::istream& seekg(std::streamoff off, std::ios_base::seekdir way);
 
     // Convenience wrappers for buffering state
-    bool hasEnoughData(size_t min_bytes) const { return buf_.hasEnoughData(min_bytes); }
-    size_t available() const { return buf_.available(); }
-    bool isDownloadComplete() const { return buf_.isDownloadComplete(); }
-    bool waitForEnoughData(size_t min_bytes, int timeout_ms) { return buf_.waitForEnoughData(min_bytes, timeout_ms); }
+    bool hasEnoughData(size_t min_bytes) const { return buf_->hasEnoughData(min_bytes); }
+    size_t available() const { return buf_->available(); }
+    bool isDownloadComplete() const { return buf_->isDownloadComplete(); }
+    bool waitForEnoughData(size_t min_bytes, int timeout_ms) { return buf_->waitForEnoughData(min_bytes, timeout_ms); }
+    // Destroy underlying buffer to wake any blocked readers/writers.
+    void destroyBuffer();
 };

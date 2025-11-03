@@ -5,10 +5,12 @@
 #include <iomanip>
 #include <algorithm>
 #include <regex>
+#include <filesystem>
 #include <openssl/md5.h>
 #include <json/json.h>
 #include <log/log_manager.h>
-#include <filesystem>
+#include <util/md5.h>
+#include <util/urlencode.h>
 
 // Mixin key encoding table from Python script
 static const std::vector<int> mixinKeyEncTab = {
@@ -76,6 +78,9 @@ bool BilibiliNetworkInterface::loadConfig(const std::string& config_file) {
                 if (!loadWbiKeys_unsafe(wbiObj)) {
                     LOG_ERROR("Failed to load WBI keys from config.");
                 }
+            }
+            if (needsWbiRefresh_unsafe()) {
+                refreshWbiKeys_unsafe();
             }
             return true;
         } else {
@@ -331,7 +336,7 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
                                                                 std::function<bool(uint64_t, uint64_t)> progress_callback)
 {
     // Return a future that executes the download in a separate thread
-     std::string host, path;
+    std::string host, path;
     if (!parseUrl(url, host, path)) {
         LOG_ERROR("Failed to parse URL: {}", url);
         return std::async(std::launch::deferred, []() { return false; });
@@ -374,8 +379,6 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
 }
 
 /********* Private method *********/
-#include <util/md5.h>
-#include <util/urlencode.h>
 std::string BilibiliNetworkInterface::getMixinKey(const std::string& orig) const {
     std::string result;
     for (int i : mixinKeyEncTab) {
@@ -406,6 +409,7 @@ bool BilibiliNetworkInterface::encWbi_unsafe(std::unordered_map<std::string, std
 {
     BiliWbiKeys wbi_keys_copy = wbi_keys_;
     if (wbi_keys_copy.img_key.empty() || wbi_keys_copy.sub_key.empty()) {
+        LOG_INFO("WBI keys are not initialized");
         return false;
     }
     std::string mixin_key = getMixinKey(wbi_keys_copy.img_key + wbi_keys_copy.sub_key);
@@ -440,7 +444,7 @@ bool BilibiliNetworkInterface::refreshWbiKeys_unsafe() {
         if (!http_client) {
             throw std::runtime_error("Failed to borrow HTTP client for WBI key refresh.");
         }
-    headers = getHttplibHeaders_unsafe("https://api.bilibili.com", "/x/web-interface/nav");
+        headers = getHttplibHeaders_unsafe("https://api.bilibili.com", "/x/web-interface/nav");
     }
 
     auto res = http_client->Get("/x/web-interface/nav", headers);

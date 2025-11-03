@@ -21,6 +21,7 @@ add_executable(BilibiliPlayerTest
 	playlist_manager_test.cpp
 	test_http_pool.cpp
 	test_cookie_jar.cpp
+    test_streaming_inputstream_shutdown.cpp
 )
 
 # Include project source headers (handled per-target below)
