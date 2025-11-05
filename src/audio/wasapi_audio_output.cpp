@@ -1,52 +1,56 @@
-#include "wasapi_audio_player.h"
+#include "wasapi_audio_output.h"
+#include <log/log_manager.h>
 #include <iostream>
 #include <algorithm>
 #include <cstring>
 #include <comdef.h>
 
-WASAPIAudioPlayer::WASAPIAudioPlayer(int sample_rate, int channels, int bits_per_sample) 
-    : device_enumerator_(nullptr), audio_device_(nullptr), 
-      audio_client_(nullptr), render_client_(nullptr), 
+WASAPIAudioOutputUnsafe::WASAPIAudioOutputUnsafe()
+    : device_enumerator_(nullptr), audio_device_(nullptr), audio_client_(nullptr), render_client_(nullptr),
       wave_format_(nullptr), buffer_frame_count_(0), initialized_(false), is_playing_(false),
-      input_sample_rate_(sample_rate), input_channels_(channels), input_bits_per_sample_(bits_per_sample) {
-    
+      input_sample_rate_(0), input_channels_(0), input_bits_per_sample_(0) {}
+
+WASAPIAudioOutputUnsafe::~WASAPIAudioOutputUnsafe() {
+    cleanup();
+}
+
+bool WASAPIAudioOutputUnsafe::initialize(int sample_rate, int channels, int bits_per_sample) {
+    input_sample_rate_ = sample_rate;
+    input_channels_ = channels;
+    input_bits_per_sample_ = bits_per_sample;
+
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to initialize COM" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to initialize COM");
+        return false;
     }
-    
-    // Create device enumerator
-    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, 
+
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                           __uuidof(IMMDeviceEnumerator), (void**)&device_enumerator_);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to create device enumerator" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to create device enumerator");
+        return false;
     }
-    
-    // Get default audio endpoint
+
     hr = device_enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &audio_device_);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to get default audio endpoint" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to get default audio endpoint");
+        return false;
     }
-    
-    // Activate audio client
+
     hr = audio_device_->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)&audio_client_);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to activate audio client" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to activate audio client");
+        return false;
     }
-    
-    // Get the device's preferred format first
+
     WAVEFORMATEX* device_format = nullptr;
     hr = audio_client_->GetMixFormat(&device_format);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to get mix format" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to get mix format");
+        return false;
     }
-    
-    // Set up our desired wave format
+
     wave_format_ = (WAVEFORMATEX*)CoTaskMemAlloc(sizeof(WAVEFORMATEX));
     wave_format_->wFormatTag = WAVE_FORMAT_PCM;
     wave_format_->nChannels = static_cast<WORD>(channels);
@@ -55,59 +59,43 @@ WASAPIAudioPlayer::WASAPIAudioPlayer(int sample_rate, int channels, int bits_per
     wave_format_->nBlockAlign = static_cast<WORD>((channels * bits_per_sample) / 8);
     wave_format_->nAvgBytesPerSec = sample_rate * wave_format_->nBlockAlign;
     wave_format_->cbSize = 0;
-    
-    // Check if our format is supported, if not use the closest supported format
+
     WAVEFORMATEX* closest_format = nullptr;
     hr = audio_client_->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED, wave_format_, &closest_format);
-    
     if (hr == S_FALSE) {
-        // Our format is not supported, but we got a closest match
         CoTaskMemFree(wave_format_);
         wave_format_ = closest_format;
     } else if (FAILED(hr)) {
-        // Format not supported and no closest match, fall back to device format
         CoTaskMemFree(wave_format_);
         wave_format_ = device_format;
-        device_format = nullptr; // Prevent double free
+        device_format = nullptr;
     }
-    
-    if (device_format) {
-        CoTaskMemFree(device_format);
-    }
-    
 
-    
-    // Initialize audio client with the supported format
+    if (device_format) CoTaskMemFree(device_format);
+
     hr = audio_client_->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 10000000, 0, wave_format_, nullptr);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to initialize audio client: 0x" << std::hex << hr << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to initialize audio client: 0x{:X}", static_cast<unsigned long>(hr));
+        return false;
     }
-    
-    // Get buffer frame count
+
     hr = audio_client_->GetBufferSize(&buffer_frame_count_);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to get buffer size" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to get buffer size");
+        return false;
     }
-    
-    // Get render client
+
     hr = audio_client_->GetService(__uuidof(IAudioRenderClient), (void**)&render_client_);
     if (FAILED(hr)) {
-        std::cerr << "WASAPI: Failed to get render client" << std::endl;
-        return;
+        LOG_ERROR("WASAPI: Failed to get render client");
+        return false;
     }
-    
-    // Don't start the audio client here - let the user call start() explicitly
+
     initialized_ = true;
+    return true;
 }
 
-WASAPIAudioPlayer::~WASAPIAudioPlayer() {
-    cleanup();
-}
-
-void WASAPIAudioPlayer::cleanup() {
-    std::lock_guard<std::mutex> lock(mutex_);
+void WASAPIAudioOutputUnsafe::cleanup() {
     
     if (audio_client_) {
         audio_client_->Stop();
@@ -140,10 +128,8 @@ void WASAPIAudioPlayer::cleanup() {
     CoUninitialize();
 }
 
-void WASAPIAudioPlayer::playAudioData(const uint8_t* data, int size) {
+void WASAPIAudioOutputUnsafe::playAudioData(const uint8_t* data, int size) {
     if (!initialized_ || !is_playing_) return;
-    
-    std::lock_guard<std::mutex> lock(mutex_);
     
     UINT32 frames_available;
     HRESULT hr = audio_client_->GetCurrentPadding(&frames_available);
@@ -178,13 +164,16 @@ void WASAPIAudioPlayer::playAudioData(const uint8_t* data, int size) {
             
             hr = render_client_->ReleaseBuffer(frames_to_copy, 0);
             if (FAILED(hr)) {
-                std::cerr << "WASAPI: Failed to release buffer: 0x" << std::hex << hr << std::endl;
+                LOG_ERROR("WASAPI: Failed to release buffer: 0x{:X}", static_cast<unsigned long>(hr));
             }
+        }
+        else {
+            LOG_ERROR("WASAPI: Failed to get buffer: 0x{:X} for size {}", static_cast<unsigned long>(hr), frames_to_copy);
         }
     }
 }
 
-void WASAPIAudioPlayer::convertAndWriteAudio(const uint8_t* data, int size, BYTE* buffer_data, UINT32 frames_to_copy) {
+void WASAPIAudioOutputUnsafe::convertAndWriteAudio(const uint8_t* data, int size, BYTE* buffer_data, UINT32 frames_to_copy) {
     const UINT32 input_bytes_per_sample = input_bits_per_sample_ / 8;
     const UINT32 input_bytes_per_frame = input_channels_ * input_bytes_per_sample;
     UINT32 input_frames = size / input_bytes_per_frame;
@@ -233,26 +222,11 @@ void WASAPIAudioPlayer::convertAndWriteAudio(const uint8_t* data, int size, BYTE
     }
 }
 
-bool WASAPIAudioPlayer::isInitialized() const {
+bool WASAPIAudioOutputUnsafe::isInitialized() const {
     return initialized_;
 }
-
-WASAPIAudioPlayer::OutputFormat WASAPIAudioPlayer::getOutputFormat() const {
-    if (!wave_format_) {
-        return {0, 0, 0};
-    }
-    
-    return {
-        static_cast<int>(wave_format_->nSamplesPerSec),
-        static_cast<int>(wave_format_->nChannels),
-        static_cast<int>(wave_format_->wBitsPerSample)
-    };
-}
-
-bool WASAPIAudioPlayer::start() {
+bool WASAPIAudioOutputUnsafe::start() {
     if (!initialized_) return false;
-    
-    std::lock_guard<std::mutex> lock(mutex_);
     
     if (is_playing_) return true; // Already playing
     
@@ -262,14 +236,12 @@ bool WASAPIAudioPlayer::start() {
         return true;
     }
     
-    std::cerr << "WASAPI: Failed to start audio client: 0x" << std::hex << hr << std::endl;
+    LOG_ERROR("WASAPI: Failed to start audio client: 0x{:X}", static_cast<unsigned long>(hr));
     return false;
 }
 
-bool WASAPIAudioPlayer::pause() {
+bool WASAPIAudioOutputUnsafe::pause() {
     if (!initialized_) return false;
-    
-    std::lock_guard<std::mutex> lock(mutex_);
     
     if (!is_playing_) return true; // Already paused
     
@@ -279,14 +251,12 @@ bool WASAPIAudioPlayer::pause() {
         return true;
     }
     
-    std::cerr << "WASAPI: Failed to pause audio client: 0x" << std::hex << hr << std::endl;
+    LOG_ERROR("WASAPI: Failed to pause audio client: 0x{:X}", static_cast<unsigned long>(hr));
     return false;
 }
 
-bool WASAPIAudioPlayer::stop() {
+bool WASAPIAudioOutputUnsafe::stop() {
     if (!initialized_) return false;
-    
-    std::lock_guard<std::mutex> lock(mutex_);
     
     HRESULT hr = audio_client_->Stop();
     if (SUCCEEDED(hr)) {
@@ -297,16 +267,28 @@ bool WASAPIAudioPlayer::stop() {
         if (SUCCEEDED(hr)) {
             return true;
         } else {
-            std::cerr << "WASAPI: Failed to reset audio client: 0x" << std::hex << hr << std::endl;
+            LOG_ERROR("WASAPI: Failed to reset audio client: 0x{:X}", static_cast<unsigned long>(hr));
             return false;
         }
     }
     
-    std::cerr << "WASAPI: Failed to stop audio client: 0x" << std::hex << hr << std::endl;
+    LOG_ERROR("WASAPI: Failed to stop audio client: 0x{:X}", static_cast<unsigned long>(hr));
     return false;
 }
 
-bool WASAPIAudioPlayer::isPlaying() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+bool WASAPIAudioOutputUnsafe::isPlaying() const {
     return is_playing_;
+}
+
+int WASAPIAudioOutputUnsafe::getAvailableFrames() const {
+    if (!audio_client_ || !initialized_) {
+        return 0;
+    }
+    
+    UINT32 frames_available = 0;
+    HRESULT hr = audio_client_->GetCurrentPadding(&frames_available);
+    if (SUCCEEDED(hr)) {
+        return static_cast<int>(buffer_frame_count_ - frames_available);
+    }
+    return 0;
 }

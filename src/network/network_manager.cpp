@@ -26,16 +26,22 @@ namespace network
         cancelAllSearches();
 
         // Signal cancel for any active downloads and notify associated buffers
+        std::vector<std::shared_ptr<RealtimePipe>> pipes;
         {
             std::lock_guard<std::mutex> lg(m_bgMutex);
             for (auto &entry : m_downloadCancelTokens) {
-                if (entry.token) entry.token->store(true);
-                if (auto buf = entry.buffer.lock()) {
-                    buf->destroy();
-                }
+                if (entry.token) 
+                    entry.token->store(true);
+                if (entry.buffer)
+                    pipes.push_back(entry.buffer);
             }
+            m_downloadCancelTokens.clear();
         }
-
+        for (auto& pipe : pipes) {
+            pipe->close();
+        }
+        pipes.clear();
+        
         // Join background watcher threads
         {
             std::lock_guard<std::mutex> lg(m_bgMutex);
@@ -229,18 +235,17 @@ namespace network
         }
     }
 
-    std::future<std::shared_ptr<StreamingInputStream>> NetworkManager::getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath)
+    std::future<std::shared_ptr<std::istream>> NetworkManager::getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath)
     {
         switch (platform) {
             case SupportInterface::Bilibili:
 
-                return std::async(std::launch::async, [this, params, savepath]() -> std::shared_ptr<StreamingInputStream> {
+                return std::async(std::launch::async, [this, params, savepath]() -> std::shared_ptr<std::istream> {
                     try {
                         // Create streaming buffer (5MB buffer for smooth streaming)
                         const size_t buffer_size = 5 * 1024 * 1024;
                         // Create streaming input that wraps the buffer
-                        auto streaming_buffer = std::make_shared<StreamingAudioBuffer>(buffer_size);
-                        auto streaming_input = std::make_shared<StreamingInputStream>(streaming_buffer);
+                        auto pipe = std::make_shared<RealtimePipe>(buffer_size);
                         std::shared_ptr<std::ofstream> file_stream;
                         QString temp_savepath;
                         if (!savepath.isEmpty()) {
@@ -262,18 +267,22 @@ namespace network
                         auto cancel_token = std::make_shared<std::atomic<bool>>(false);
                         {
                             std::lock_guard<std::mutex> lg(m_bgMutex);
-                            m_downloadCancelTokens.push_back({ cancel_token, streaming_buffer });
+                            m_downloadCancelTokens.push_back({ cancel_token, pipe });
                         }
-
-                        auto download_future = m_biliInterface->asyncDownloadStream(url,
-                            [streaming_buffer, file_stream, cancel_token](const char* data, size_t size) -> bool {
+                        auto os = pipe->getOutputStream();
+                        auto is = pipe->getInputStream();
+                        auto download_future = m_biliInterface->asyncDownloadStream(
+                            url,
+                            [os, file_stream, cancel_token](const char* data, size_t size) -> bool {
                                 // Check cancellation request
                                 if (cancel_token && cancel_token->load()) return false;
                                 if (data && size > 0) {
-                                    // Write to streaming buffer (blocking until space available or destroyed)
-                                    streaming_buffer->write(data, size);
-                                    if (file_stream && file_stream->is_open()) {
-                                        file_stream->write(data, size);
+                                    try {
+                                        os->write(data, size);
+                                        if (file_stream && file_stream->is_open())
+                                            file_stream->write(data, size);
+                                    } catch (...) {
+                                        return false; // stop on any exception
                                     }
                                 }
                                 return true; // Continue download
@@ -281,12 +290,15 @@ namespace network
                         );
 
                         // Spawn a lightweight watcher to finalize file and mark buffer complete
-                        std::thread watcher_thread([this, streaming_buffer, file_stream, savepath, temp_savepath, cancel_token, df = std::move(download_future)]() mutable {
+                        std::thread watcher_thread([this, os, file_stream, savepath, temp_savepath, cancel_token, df = std::move(download_future)]() mutable {
                             try {
                                 bool ok = df.get();
-                                if (file_stream && file_stream->is_open()) {
-                                    file_stream->flush();
-                                    file_stream->close();
+                                os.reset(); // Always close output stream (even on error)
+                                if (ok) {
+                                    if (file_stream && file_stream->is_open()) {
+                                        file_stream->flush();
+                                        file_stream->close();
+                                    }
                                 }
                                 if (!savepath.isEmpty()) {
                                     if (ok) {
@@ -309,18 +321,12 @@ namespace network
                             } catch (const std::exception& ex) {
                                 LOG_ERROR("Streaming finalize error: {}", ex.what());
                             }
-                            // In any case, mark buffer completion to unblock readers
-                            streaming_buffer->setDownloadComplete();
 
                             // Remove cancel token from active list (best-effort)
-                            try {
-                                std::lock_guard<std::mutex> lg(m_bgMutex);
-                                auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
-                                    [&cancel_token](const DownloadCancelEntry& e) { return e.token == cancel_token; });
-                                if (it != m_downloadCancelTokens.end()) m_downloadCancelTokens.erase(it);
-                            } catch (...) {
-                                // ignore
-                            }
+                            std::lock_guard<std::mutex> lg(m_bgMutex);
+                            auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
+                                [&cancel_token](const DownloadCancelEntry& e) { return e.token == cancel_token; });
+                            if (it != m_downloadCancelTokens.end()) m_downloadCancelTokens.erase(it);
                         });
 
                         // Track watcher thread so we can join on shutdown
@@ -333,7 +339,7 @@ namespace network
                         // buffer completion is signaled and optional file is finalized.
                         
                         LOG_INFO("Streaming started for URL: {}", url);
-                        return streaming_input;
+                        return is;
                         
                     } catch (const std::exception& e) {
                         LOG_ERROR("Bilibili streaming error: {}", e.what());
@@ -343,7 +349,7 @@ namespace network
                 
             default:
                 // Return a future that immediately throws an exception
-                return std::async(std::launch::async, []() -> std::shared_ptr<StreamingInputStream> {
+                return std::async(std::launch::async, []() -> std::shared_ptr<std::istream> {
                     throw std::runtime_error("Unsupported platform for streaming");
                 });
         }
@@ -363,9 +369,9 @@ namespace network
 
         // Atomically request cancel
         it->token->store(true);
-        if (auto buf = it->buffer.lock()) {
+        if (std::shared_ptr<RealtimePipe> buf = it->buffer) {
             // wake blocked readers/writers
-            buf->destroy();
+            buf->close();
         }
 
         // Erase the entry from the active list; caller may still hold token

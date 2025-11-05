@@ -5,18 +5,18 @@
 #include <QString>
 #include <QUuid>
 #include <QList>
-#include <QThread>
 #include <mutex>
 #include <memory>
 #include <atomic>
 #include <random>
-#include "../playlist/playlist.h"
+#include <thread>
+#include <condition_variable>
+#include <playlist/playlist.h>
 
 // Forward declarations
-class WASAPIAudioPlayer;
+class WASAPIAudioOutputUnsafe;
 class FFmpegStreamDecoder;
-class StreamingAudioBuffer;
-class StreamingInputStream;
+struct AudioFrameQueue;
 namespace network { class NetworkManager; }
 
 enum class PlaybackState {
@@ -58,7 +58,7 @@ public:
     void stop();
     void next();
     void previous();
-    void seekTo(qint64 positionMs);
+    // void seekTo(qint64 positionMs); // TODO: Implement in new decoder API
 
     // Play mode control
     void setPlayMode(playlist::PlayMode mode);
@@ -87,9 +87,6 @@ signals:
     void playbackError(const QString& message);
     void songLoadError(const playlist::SongInfo& song, const QString& message);
 
-    // Progress signals (for streaming downloads)
-    void downloadProgress(const QString& filename, qint64 downloaded, qint64 total);
-
 private slots:
     void onPositionTimerTimeout();
     void onAudioDecodingFinished();
@@ -103,6 +100,11 @@ private:
     void loadPreviousSong();
     int getNextSongIndex();
     int getPreviousSongIndex();
+    
+    // Private helpers that MUST be called with m_stateMutex held (unsafe)
+    void playCurrentSongUnsafe();
+    void stopCurrentSongUnsafe();
+    void clearPlaylistUnsafe();
 
     // File and streaming management
     QString generateStreamingFilepath(const playlist::SongInfo& song) const;
@@ -110,17 +112,23 @@ private:
     // Streaming is acquired via NetworkManager in playCurrentSong()
 
     // Utility functions
-    void updatePlaybackStatus();
-    void emitStatusSignals();
+    // void updatePlaybackStatus();
+    // void emitStatusSignals();
     void setupRandomGenerator();
 
 private:
     // Audio components
-    std::unique_ptr<WASAPIAudioPlayer> m_audioPlayer;
+    std::unique_ptr<WASAPIAudioOutputUnsafe> m_audioPlayer;
     std::unique_ptr<FFmpegStreamDecoder> m_decoder;
+    std::shared_ptr<AudioFrameQueue> m_frameQueue;
+    
+    // Frame transmission thread (consumes frames from decoder and sends to audio output)
+    std::thread m_frameTransmissionThread;
+    std::atomic<bool> m_frameTransmissionActive;
+    void frameTransmissionLoop();
     
     // Streaming components
-    std::shared_ptr<StreamingInputStream> m_currentStream; // keep stream alive while decoding
+    std::shared_ptr<std::istream> m_currentStream;
 
     // Playlist data
     QUuid m_currentPlaylistId;
@@ -146,11 +154,6 @@ private:
     // Thread safety: protect controller state with a standard mutex
     mutable std::mutex m_stateMutex;
 
-    // Private helpers that MUST be called with m_stateMutex held (unsafe)
-    void playCurrentSongUnsafe();
-    void stopCurrentSongUnsafe();
-    void clearPlaylistUnsafe();
-    
     // Error handling
     QString m_lastError;
 };

@@ -39,15 +39,15 @@ set(PROJECT_SOURCES
     # Audio components
     audio/ffmpeg_decoder.cpp
     audio/ffmpeg_decoder.h
-    audio/wasapi_audio_player.cpp
-    audio/wasapi_audio_player.h
+    audio/wasapi_audio_output.cpp
+    audio/wasapi_audio_output.h
     audio/audio_player_controller.cpp
     audio/audio_player_controller.h
     
     # Streaming components
-    stream/streaming_audio_buffer.cpp
-    stream/streaming_audio_buffer.h
-    
+    stream/realtime_pipe.cpp
+    stream/realtime_pipe.hpp
+
     # Manager components
     manager/application_context.cpp
     manager/application_context.h

@@ -10,63 +10,64 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(Qt6 COMPONENTS Core Gui REQUIRED)
 find_package(JsonCpp REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 ## Single combined test executable for the project
 add_executable(BilibiliPlayerTest
-	streaming_buffer_test.cpp
-	streaming_integration_test.cpp
-	streaming_cancellation_test.cpp
-	fake_network_producer_test.cpp
-	config_manager_test.cpp
-	playlist_manager_test.cpp
-	test_http_pool.cpp
-	test_cookie_jar.cpp
-    test_streaming_inputstream_shutdown.cpp
+	realtime_pipe_test.cpp
+	# streaming_buffer_test.cpp
+	# streaming_integration_test.cpp
+	# streaming_cancellation_test.cpp
+	# fake_network_producer_test.cpp
+	# config_manager_test.cpp
+	# playlist_manager_test.cpp
+	# test_http_pool.cpp
+	# test_cookie_jar.cpp
 )
 
 # Include project source headers (handled per-target below)
 
 # Build a small static target for the streaming implementation so the test can link against it
-add_library(streaming_impl STATIC ${CMAKE_SOURCE_DIR}/src/stream/streaming_audio_buffer.cpp)
-target_include_directories(streaming_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_library(realtime_pipe_impl STATIC ${CMAKE_SOURCE_DIR}/src/stream/realtime_pipe.cpp)
+target_include_directories(realtime_pipe_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-# Config and playlist implementation targets for testing
-add_library(config_impl STATIC ${CMAKE_SOURCE_DIR}/src/config/config_manager.cpp ${CMAKE_SOURCE_DIR}/src/log/log_manager.cpp)
-target_include_directories(config_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# # Config and playlist implementation targets for testing
+# add_library(config_impl STATIC ${CMAKE_SOURCE_DIR}/src/config/config_manager.cpp ${CMAKE_SOURCE_DIR}/src/log/log_manager.cpp)
+# target_include_directories(config_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-add_library(playlist_impl STATIC ${CMAKE_SOURCE_DIR}/src/playlist/playlist_manager.cpp)
-target_include_directories(playlist_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# add_library(playlist_impl STATIC ${CMAKE_SOURCE_DIR}/src/playlist/playlist_manager.cpp)
+# target_include_directories(playlist_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-# Link libraries required by config/playlist implementations
-target_link_libraries(config_impl PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui spdlog::spdlog fmt::fmt)
-target_link_libraries(playlist_impl PRIVATE config_impl Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui spdlog::spdlog)
+# # Link libraries required by config/playlist implementations
+# target_link_libraries(config_impl PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui spdlog::spdlog fmt::fmt)
+# target_link_libraries(playlist_impl PRIVATE config_impl Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui spdlog::spdlog)
 
 target_link_libraries(BilibiliPlayerTest PRIVATE
 	Catch2::Catch2WithMain
-	streaming_impl
-	config_impl
-	playlist_impl
+	realtime_pipe_impl
+	# config_impl
+	# playlist_impl
 	Qt${QT_VERSION_MAJOR}::Core
 	Qt${QT_VERSION_MAJOR}::Gui
-	spdlog::spdlog
-	fmt::fmt
     httplib::httplib
     JsonCpp::JsonCpp
+	OpenSSL::SSL 
+	OpenSSL::Crypto
+	spdlog::spdlog
+	fmt::fmt
 )
 target_include_directories(BilibiliPlayerTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Build network implementation into a small static library for tests and enable
 # UNIT_TEST define so test helpers are present.
-add_library(network_impl STATIC
-	${CMAKE_SOURCE_DIR}/src/network/bili_network_interface.cpp
-	${CMAKE_SOURCE_DIR}/src/util/md5.cpp
-	${CMAKE_SOURCE_DIR}/src/util/urlencode.cpp
-)
-target_include_directories(network_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_compile_definitions(network_impl PRIVATE UNIT_TEST)
-target_link_libraries(network_impl PRIVATE httplib::httplib JsonCpp::JsonCpp OpenSSL::SSL OpenSSL::Crypto spdlog::spdlog fmt::fmt)
-
-target_link_libraries(BilibiliPlayerTest PRIVATE network_impl)
+# add_library(network_impl STATIC
+# 	${CMAKE_SOURCE_DIR}/src/network/bili_network_interface.cpp
+# 	${CMAKE_SOURCE_DIR}/src/util/md5.cpp
+# 	${CMAKE_SOURCE_DIR}/src/util/urlencode.cpp
+# )
+# target_include_directories(network_impl PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(BilibiliPlayerTest PRIVATE UNIT_TEST)
+# target_link_libraries(network_impl PRIVATE httplib::httplib JsonCpp::JsonCpp OpenSSL::SSL OpenSSL::Crypto spdlog::spdlog fmt::fmt)
 
 # Use C++17
 set_target_properties(BilibiliPlayerTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)

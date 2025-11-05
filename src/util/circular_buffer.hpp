@@ -1,101 +1,102 @@
 #pragma once
 
 #include <vector>
+#include <cstddef>
 #include <stdexcept>
+#include <algorithm>
 
+namespace util {
+/**
+ * @brief Simple circular buffer (non-thread-safe)
+ *
+ * @tparam T Type of elements stored
+ */
 template <typename T>
 class CircularBuffer {
 public:
     explicit CircularBuffer(size_t capacity)
-        : capacity_(capacity), buffer_(capacity), head_(0), size_(0) {}
-
-    void push(const T& item) {
-        buffer_[head_] = item;
-        head_ = (head_ + 1) % capacity_;
-        if (size_ < capacity_) {
-            ++size_;
-        }
+        : buffer_(capacity), capacity_(capacity), read_pos_(0), write_pos_(0), full_(false) {
+        if (capacity == 0) throw std::invalid_argument("CircularBuffer capacity must be > 0");
     }
     
-    // Alias for push to match expected interface
-    bool write(const T& item) {
-        if (isFull()) {
-            return false;
+    void push(const T& item) {
+        buffer_[write_pos_] = item;
+        write_pos_ = (write_pos_ + 1) % capacity_;
+        if (full_) {
+            read_pos_ = (read_pos_ + 1) % capacity_; // overwrite oldest
         }
-        push(item);
-        return true;
-    }
-
-    // Bulk write: write up to count elements from data, return number written
-    size_t write(const T* data, size_t count) {
-        size_t written = 0;
-        while (written < count && !isFull()) {
-            buffer_[head_] = data[written];
-            head_ = (head_ + 1) % capacity_;
-            if (size_ < capacity_) ++size_;
-            ++written;
-        }
-        return written;
+        full_ = write_pos_ == read_pos_;
     }
 
     T pop() {
-        if (size_ == 0) {
-            throw std::out_of_range("Buffer is empty");
-        }
-        size_t tail = (head_ + capacity_ - size_) % capacity_;
-        T item = buffer_[tail];
-        --size_;
+        if (empty()) throw std::runtime_error("CircularBuffer is empty");
+        T item = buffer_[read_pos_];
+        read_pos_ = (read_pos_ + 1) % capacity_;
+        full_ = false;
         return item;
     }
-    
-    // Alias for pop to match expected interface
-    bool read(T& item) {
-        if (isEmpty()) {
-            return false;
+
+    void write(const T* data, size_t count) {
+        size_t remaining = count;
+        while (remaining > 0) {
+            // Max contiguous space until end of buffer
+            size_t space = full_ ? 0 :
+                        (write_pos_ >= read_pos_ ? capacity_ - write_pos_ : read_pos_ - write_pos_);
+            
+            if (full_ || space == 0) {
+                // Buffer full, overwrite oldest element (like push)
+                buffer_[write_pos_] = *data;
+                write_pos_ = (write_pos_ + 1) % capacity_;
+                read_pos_ = write_pos_;  // move read_pos to next oldest
+                full_ = true;
+                ++data;
+                --remaining;
+                continue;
+            }
+
+            // Copy a contiguous chunk
+            size_t chunk = std::min(space, remaining);
+            std::copy(data, data + chunk, buffer_.begin() + write_pos_);
+            write_pos_ = (write_pos_ + chunk) % capacity_;
+            full_ = write_pos_ == read_pos_;
+            data += chunk;
+            remaining -= chunk;
         }
-        item = pop();
-        return true;
     }
 
-    // Bulk read: read up to count elements into out, return number read
-    size_t read(T* out, size_t count) {
-        size_t readCount = 0;
-        while (readCount < count && !isEmpty()) {
-            size_t tail = (head_ + capacity_ - size_) % capacity_;
-            out[readCount] = buffer_[tail];
-            // Pop element
-            --size_;
-            ++readCount;
+    size_t read(T* data, size_t count) {
+        size_t totalRead = 0;
+        while (totalRead < count && !empty()) {
+            // Max contiguous data until end of buffer
+            size_t available = write_pos_ > read_pos_ ? write_pos_ - read_pos_ :
+                            (full_ ? capacity_ - read_pos_ : capacity_ - read_pos_);
+            size_t chunk = std::min(count - totalRead, available);
+
+            std::copy(buffer_.begin() + read_pos_, buffer_.begin() + read_pos_ + chunk, data + totalRead);
+
+            read_pos_ = (read_pos_ + chunk) % capacity_;
+            full_ = false;
+            totalRead += chunk;
         }
-        return readCount;
+        return totalRead;
     }
 
+
+    bool empty() const { return !full_ && (read_pos_ == write_pos_); }
+    bool full() const { return full_; }
     size_t size() const {
-        return size_;
-    }
-    
-    // Alias for size to match expected interface
-    size_t available() const {
-        return size_;
+        if (full_) return capacity_;
+        if (write_pos_ >= read_pos_) return write_pos_ - read_pos_;
+        return capacity_ - read_pos_ + write_pos_;
     }
 
     size_t capacity() const { return capacity_; }
 
-    bool isEmpty() const {
-        return size_ == 0;
-    }
-
-    bool isFull() const {
-        return size_ == capacity_;
-    }
-    
-    void clear() {
-        head_ = 0;
-        size_ = 0;
-    }
 private:
-    size_t capacity_;
     std::vector<T> buffer_;
-    size_t head_;
-    size_t size_;
+    size_t capacity_;
+    size_t read_pos_;
+    size_t write_pos_;
+    bool full_;
 };
+}

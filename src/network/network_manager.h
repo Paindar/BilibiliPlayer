@@ -8,7 +8,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <stream/streaming_audio_buffer.h>
+#include <stream/realtime_pipe.hpp>
 #include "bili_network_interface.h"
 
 namespace network
@@ -52,7 +52,7 @@ namespace network
         void cancelAllSearches();
         // Convenience: get size by interface params (e.g., bvid/cid) instead of direct URL
         std::future<uint64_t> getStreamSizeByParamsAsync(SupportInterface platform, const QString& params);
-        std::future<std::shared_ptr<StreamingInputStream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
+        std::future<std::shared_ptr<std::istream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
         std::future<void> downloadAsync(SupportInterface platform, const QString& url, const QString& filepath);
         
         void setRequestTimeout(int timeoutMs) { m_requestTimeout = timeoutMs; }
@@ -89,7 +89,7 @@ namespace network
         std::vector<std::thread> m_bgThreads;
         struct DownloadCancelEntry {
             std::shared_ptr<std::atomic<bool>> token;
-            std::weak_ptr<StreamingAudioBuffer> buffer;
+            std::shared_ptr<RealtimePipe> buffer;
         };
         std::vector<DownloadCancelEntry> m_downloadCancelTokens;
         // Cancel a specific download by token: sets the token and notifies/destroys the

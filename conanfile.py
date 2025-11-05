@@ -24,7 +24,7 @@ class BilibiliPlayerConan(ConanFile):
         "cpp-httplib/*:with_openssl": True,
     }
 
-    generators = "CMakeDeps"
+    generators = "CMakeDeps", "CMakeToolchain"
 
     # Lightweight recipe - we only need this to be usable by `conan install`.
     def layout(self):
