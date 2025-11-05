@@ -72,5 +72,10 @@ target_compile_definitions(BilibiliPlayerTest PRIVATE UNIT_TEST)
 # Use C++17
 set_target_properties(BilibiliPlayerTest PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
-# Include project source headers for tests
-## project headers already added to BilibiliPlayerTest above
+# Copy necessary DLLs on Windows after build
+add_custom_command(TARGET BilibiliPlayerTest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_RUNTIME_DLLS:BilibiliPlayerTest>
+        $<TARGET_FILE_DIR:BilibiliPlayerTest>
+    COMMAND_EXPAND_LISTS
+)

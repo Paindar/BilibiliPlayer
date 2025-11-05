@@ -1,3 +1,4 @@
+from conan.tools.files import copy
 from conan import ConanFile
 
 class BilibiliPlayerConan(ConanFile):
@@ -22,6 +23,8 @@ class BilibiliPlayerConan(ConanFile):
         "ffmpeg/*:with_opus": False,
         "ffmpeg/*:shared": True,
         "cpp-httplib/*:with_openssl": True,
+        "spdlog/*:shared": True,
+        "fmt/*:shared": True,
     }
 
     generators = "CMakeDeps", "CMakeToolchain"
@@ -29,3 +32,18 @@ class BilibiliPlayerConan(ConanFile):
     # Lightweight recipe - we only need this to be usable by `conan install`.
     def layout(self):
         pass
+    
+    def generate(self):
+        for dep in self.dependencies.values():
+            if self.settings.os == "Windows":
+                self.copy_dlls(dep)
+            else:
+                # unsupported OS for DLL copying
+                pass
+    
+    def copy_dlls(self, dep):
+        if dep.cpp_info.bindirs:
+            bindir = dep.cpp_info.bindirs[0]
+            copy(self, "*.dll", 
+                 src=bindir, 
+                 dst=f"{self.build_folder}/bin")

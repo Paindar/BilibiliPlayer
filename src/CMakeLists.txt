@@ -156,3 +156,30 @@ install(TARGETS BilibiliPlayer
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(BilibiliPlayer)
 endif()
+
+# Copy necessary DLLs on Windows after build
+
+# Find the directory where Qt6Core.dll or libQt6Core.a lives
+get_target_property(QtCore_location Qt6::Core LOCATION)
+get_filename_component(QT_BIN_DIR "${QtCore_location}" DIRECTORY)
+get_filename_component(QT_INSTALL_DIR "${QT_BIN_DIR}" DIRECTORY)
+
+# Now we can form the plugin path (works on both Windows & Linux)
+# Post-build step for copying runtime DLLs
+add_custom_command(TARGET BilibiliPlayer POST_BUILD
+    # 1. Copy all DLLs from the Conan bin folder (already populated by conan install)
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_BINARY_DIR}/bin"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>"
+
+    # 2. Ensure the Qt platform folder exists
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:BilibiliPlayer>/platforms"
+
+    # 3. Copy the Qt Windows platform plugin
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${QT_INSTALL_DIR}/plugins/platforms/qwindows.dll"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>/platforms"
+
+    COMMENT "Copying DLLs (Conan + Qt) to runtime output folder"
+)
