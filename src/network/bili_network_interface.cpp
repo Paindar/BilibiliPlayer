@@ -42,6 +42,27 @@ BilibiliNetworkInterface::~BilibiliNetworkInterface() {
     }
 }
 
+bool network::BilibiliNetworkInterface::initializeDefaultConfig()
+{
+    std::scoped_lock lock(m_clientMutex_, m_wbiMutex_);
+    // Phase 1 set heeaders
+    httplib::Headers headers = getDefaultHeaders();
+    for(auto header : headers) {
+        headers_[header.first] = header.second;
+    }
+    // Phase 2 initialize cookies
+    if (!initializeCookies_unsafe()) {
+        LOG_ERROR("Failed to initialize default cookies.");
+        return false;
+    }
+    // Phase 3 initialize WBI keys
+    if (!refreshWbiKeys_unsafe()) {
+        LOG_ERROR("Failed to initialize default WBI keys.");
+        return false;
+    }
+    return true;
+}
+
 // Configuration methods with cookie persistence
 bool BilibiliNetworkInterface::loadConfig(const std::string& config_file) {
     std::string config = platform_dir_ + '/' + (config_file.empty() ? "bilibili.json" : config_file);
@@ -112,6 +133,7 @@ bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
         LOG_ERROR("Failed to save WBI keys to config.");
     }
     file << root.toStyledString();
+    LOG_INFO("Configuration saved to {}", config);
     return true;
 }
 

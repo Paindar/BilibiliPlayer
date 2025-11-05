@@ -16,6 +16,7 @@ namespace network
     enum SupportInterface {
         Bilibili = 0x1,
         // Future platforms can be added here
+        All = 0xFFFFFFFF
     };
 
     // Search result structure
@@ -41,10 +42,11 @@ namespace network
         Q_OBJECT
         
     public:
-        static NetworkManager& instance();
-        
+        NetworkManager();
+        ~NetworkManager();
         // Configuration
         void configure(const QString& platformDir, int timeoutMs = 10000, const QString& proxyUrl = "");
+        void saveConfiguration();
         bool isConfigured() const { return m_configured; }
         
         // Main search orchestrator method - coordinates multiple async searches
@@ -64,8 +66,6 @@ namespace network
         void searchProgress(const QString& keyword, const QList<SearchResult>& results);
         
     private:
-        NetworkManager();
-        ~NetworkManager();
         
         NetworkManager(const NetworkManager&) = delete;
         NetworkManager& operator=(const NetworkManager&) = delete;
@@ -77,7 +77,10 @@ namespace network
         // Helper methods
         std::future<void> monitorSearchFuturesWithCV(const QString& keyword, std::vector<std::future<void>>&& futures);
         QString Seconds2HMS(int totalSeconds);
-        
+        bool cancelDownload(const std::shared_ptr<std::atomic<bool>>& token);
+        bool checkPlatformStatus(SupportInterface platform);
+    
+    private:    
         std::unique_ptr<BilibiliNetworkInterface> m_biliInterface;
         std::atomic<bool> m_cancelFlag;
         std::mutex m_completionMutex;
@@ -95,6 +98,5 @@ namespace network
         // Cancel a specific download by token: sets the token and notifies/destroys the
         // associated buffer so any blocked readers/writers wake. Returns true if an
         // entry was found and cancelled.
-        bool cancelDownload(const std::shared_ptr<std::atomic<bool>>& token);
     };
 }

@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QCoreApplication>
+#include <chrono>
 
 ApplicationContext& ApplicationContext::instance()
 {
@@ -129,8 +130,12 @@ void ApplicationContext::initializeNetworkManager()
     QString platformDir = m_configManager->getPlatformDirectory();
     int timeout = m_configManager->getNetworkTimeout();
     QString proxyUrl = m_configManager->getProxyUrl();
-
-    network::NetworkManager::instance().configure(platformDir, timeout, proxyUrl);
+    if (QFile::exists(platformDir) == false) {
+        QDir().mkpath(platformDir);
+        LOG_INFO("Created platform directory at {}", platformDir.toStdString());
+    }
+    m_networkManager = std::make_unique<network::NetworkManager>();
+    m_networkManager->configure(platformDir, timeout, proxyUrl);
 
     LOG_DEBUG("NetworkManager initialized with config settings");
 }
@@ -185,32 +190,119 @@ bool ApplicationContext::isPhaseInitialized(int phase) const
     return m_currentPhase >= phase;
 }
 
+void ApplicationContext::gracefulShutdown(int timeoutMs)
+{
+    if (!m_initialized) {
+        LOG_DEBUG("ApplicationContext already shutdown or not initialized");
+        return;
+    }
+    
+    LOG_INFO("Starting graceful shutdown with timeout: {}ms", timeoutMs);
+    emit shutdownStarted();
+    
+    // Use QTimer for timeout protection
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+    bool timeoutOccurred = false;
+    
+    connect(&timeoutTimer, &QTimer::timeout, [&timeoutOccurred]() {
+        timeoutOccurred = true;
+        LOG_WARN("Shutdown timeout occurred - forcing immediate shutdown");
+    });
+    
+    timeoutTimer.start(timeoutMs);
+    
+    // Perform shutdown with timeout protection
+    auto startTime = std::chrono::steady_clock::now();
+    
+    try {
+        shutdown();
+        
+        auto endTime = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+        
+        if (timeoutOccurred) {
+            LOG_WARN("Shutdown completed after timeout ({}ms)", duration);
+        } else {
+            LOG_INFO("Graceful shutdown completed in {}ms", duration);
+        }
+        
+    } catch (...) {
+        LOG_ERROR("Exception during graceful shutdown - performing emergency shutdown");
+        shutdown(); // Try one more time
+    }
+    
+    timeoutTimer.stop();
+}
+
 void ApplicationContext::shutdown()
 {
-    if (!m_initialized) return;
+    if (!m_initialized) {
+        LOG_DEBUG("ApplicationContext already shutdown or not initialized");
+        return;
+    }
     
     LOG_INFO("Shutting down ApplicationContext...");
     
-    // Save current state before shutdown
-    if (m_configManager) {
-        m_configManager->saveToFile();
+    try {
+        // Phase 3 shutdown: Data managers and audio (reverse order)
+        LOG_INFO("Shutdown Phase 3: Stopping audio and data managers");
+        
+        // Stop audio playback first to prevent audio glitches during shutdown
+        if (m_audioPlayerController) {
+            LOG_DEBUG("Stopping audio playback...");
+            m_audioPlayerController->stop(); // Graceful stop before destruction
+        }
+        
+        // Save playlist data before destroying manager
+        if (m_playlistManager) {
+            LOG_DEBUG("Saving playlist data...");
+            m_playlistManager->saveAllCategories();
+        }
+        
+        // Destroy Phase 3 managers
+        m_audioPlayerController.reset();
+        m_playlistManager.reset();
+        emit shutdownPhaseCompleted(3);
+        
+        // Phase 2 shutdown: Network managers
+        LOG_INFO("Shutdown Phase 2: Network cleanup");
+        if (m_networkManager) {
+            LOG_DEBUG("Saving network configuration...");
+            m_networkManager->saveConfiguration();
+        }
+        m_networkManager.reset();
+        emit shutdownPhaseCompleted(2);
+        
+        // Phase 1 shutdown: Core managers (config last)
+        LOG_INFO("Shutdown Phase 1: Core manager cleanup");
+        if (m_configManager) {
+            LOG_DEBUG("Saving configuration...");
+            m_configManager->saveToFile();
+        }
+        m_configManager.reset();
+        emit shutdownPhaseCompleted(1);
+        
+        // Reset state flags
+        m_initialized = false;
+        m_currentPhase = 0;
+        
+        emit shutdownCompleted();
+        LOG_INFO("ApplicationContext shutdown complete - all phases cleaned up successfully");
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("Error during ApplicationContext shutdown: {}", e.what());
+        // Force reset even if error occurred to prevent zombie state
+        m_audioPlayerController.reset();
+        m_playlistManager.reset();
+        m_networkManager.reset();
+        m_configManager.reset();
+        m_initialized = false;
+        m_currentPhase = 0;
+        
+        emit shutdownCompleted(); // Still emit completion even on error
     }
     
-    if (m_playlistManager) {
-        m_playlistManager->saveAllCategories();
-    }
-    
-    // Shutdown in reverse dependency order
-    m_audioPlayerController.reset(); // Phase 3 - Stop audio first
-    m_playlistManager.reset();       // Phase 3
-    // NetworkManager is singleton - no cleanup needed here
-    m_configManager.reset();         // Phase 1
-    
-    m_initialized = false;
-    m_currentPhase = 0;
-    
-    // Shutdown logging last
+    // Shutdown logging system last (after all other logging is complete)
     LogManager::instance().shutdown();
-    
-    LOG_INFO("ApplicationContext shutdown complete");
 }

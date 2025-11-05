@@ -29,12 +29,11 @@ SearchPage::SearchPage(QWidget *parent)
     connect(ui->resultsList, &QListWidget::itemDoubleClicked, this, &SearchPage::onResultItemDoubleClicked);
     
     // Connect NetworkManager signals
-    auto& networkManager = NETWORK_MANAGER;
-    connect(&networkManager, &network::NetworkManager::searchCompleted,
+    connect(NETWORK_MANAGER, &network::NetworkManager::searchCompleted,
             this, &SearchPage::onSearchCompleted);
-    connect(&networkManager, &network::NetworkManager::searchFailed,
+    connect(NETWORK_MANAGER, &network::NetworkManager::searchFailed,
             this, &SearchPage::onSearchFailed);
-    connect(&networkManager, &network::NetworkManager::searchProgress,
+    connect(NETWORK_MANAGER, &network::NetworkManager::searchProgress,
             this, &SearchPage::onSearchProgress);
     
     // Show empty state initially
@@ -132,10 +131,10 @@ void SearchPage::performSearch()
     
     if (m_currentScope == SearchScope::Bilibili) {
         // Use Bilibili search only
-        NETWORK_MANAGER.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
+        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
     } else {
         // For "All" scope, search all available sources
-        NETWORK_MANAGER.executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
+        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::SupportInterface::All, 20);
     }
 }
 
@@ -283,7 +282,7 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
     playlist::SongInfo song{
         .title = result.title,
         .uploader = result.uploader,
-        .platform = result.platform,
+        .platform = static_cast<int>(result.platform),
         .duration = result.duration,
         .args = result.interfaceData
     };

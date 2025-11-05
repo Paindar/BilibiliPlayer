@@ -717,11 +717,10 @@ void AudioPlayerController::playCurrentSongUnsafe()
         if (useStreaming) {
             // Acquire real-time stream via NetworkManager
             auto platform = static_cast<network::SupportInterface>(song.platform);
-            auto& nm = network::NetworkManager::instance();
 
             // Start both requests: expected size first (critical), and stream acquisition
-            auto sizeFuture = nm.getStreamSizeByParamsAsync(platform, song.args);
-            auto streamFuture = nm.getAudioStreamAsync(platform, song.args, filepath);
+            auto sizeFuture = NETWORK_MANAGER->getStreamSizeByParamsAsync(platform, song.args);
+            auto streamFuture = NETWORK_MANAGER->getAudioStreamAsync(platform, song.args, filepath);
 
             // Get expected size
             try {
@@ -743,6 +742,8 @@ void AudioPlayerController::playCurrentSongUnsafe()
             if (!fileStream->is_open()) {
                 throw std::runtime_error("Failed to open local file");
             }
+            expectedSize = fileStream->seekg(0, std::ios::end).tellg();
+            fileStream->seekg(0, std::ios::beg);
             opened = m_decoder->initialize(fileStream, m_frameQueue);
         }
     } catch (const std::exception& e) {

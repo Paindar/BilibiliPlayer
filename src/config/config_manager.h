@@ -39,7 +39,7 @@ public:
     QString getTmpDirectory() const { return "tmp"; }
     QString getConfigDirectory() const { return "config"; }
     QString getLogDirectory() const { return "log"; }
-    QString getConfigFilePath() const { return "config.json"; } // Fixed file at workspace root
+    QString getConfigFilePath() const { return "config.ini"; } // Fixed file at workspace root
     
     // User-configurable paths (relative to workspace)
     QString getPlaylistDirectory() const;

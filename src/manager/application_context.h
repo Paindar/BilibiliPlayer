@@ -37,7 +37,7 @@ public:
     PlaylistManager* playlistManager() const { return m_playlistManager.get(); }
     ConfigManager* configManager() const { return m_configManager.get(); }
     AudioPlayerController* audioPlayerController() const { return m_audioPlayerController.get(); }
-    // NetworkManager uses singleton pattern - access via NetworkManager::instance()
+    network::NetworkManager* networkManager() const { return m_networkManager.get(); }
     
     // Check initialization status
     bool isInitialized() const { return m_initialized; }
@@ -45,6 +45,7 @@ public:
     
     // Cleanup
     void shutdown();
+    void gracefulShutdown(int timeoutMs = 5000); // Shutdown with timeout for safety
     
 signals:
     void managersInitialized();
@@ -52,6 +53,9 @@ signals:
     void configLoaded();
     void networkReady();
     void dataManagersReady();
+    void shutdownStarted();
+    void shutdownPhaseCompleted(int phase);
+    void shutdownCompleted();
     
 private:
     explicit ApplicationContext(QObject* parent = nullptr);
@@ -71,6 +75,7 @@ private:
     std::unique_ptr<ConfigManager> m_configManager;
     std::unique_ptr<PlaylistManager> m_playlistManager;
     std::unique_ptr<AudioPlayerController> m_audioPlayerController;
+    std::unique_ptr<network::NetworkManager> m_networkManager;
     
     bool m_initialized = false;
     int m_currentPhase = 0;
@@ -81,4 +86,4 @@ private:
 #define PLAYLIST_MANAGER APP_CONTEXT.playlistManager()
 #define CONFIG_MANAGER APP_CONTEXT.configManager()
 #define AUDIO_PLAYER_CONTROLLER APP_CONTEXT.audioPlayerController()
-#define NETWORK_MANAGER network::NetworkManager::instance()
+#define NETWORK_MANAGER APP_CONTEXT.networkManager()

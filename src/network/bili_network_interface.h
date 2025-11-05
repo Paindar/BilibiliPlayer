@@ -37,6 +37,7 @@ namespace network
         // Constructor/Destructor
         BilibiliNetworkInterface();
         ~BilibiliNetworkInterface();
+        bool initializeDefaultConfig();
         // Configuration loading/saving
         bool loadConfig(const std::string& config_file = "bilibili.json");
         bool saveConfig(const std::string& config_file = "bilibili.json");
@@ -143,9 +144,9 @@ namespace network
             std::shared_ptr<httplib::Client> client;
             bool available = true;
         };
-    // Map from host -> list of client entries for that host. Using a hashmap
-    // makes lookups for a given host O(1) average and groups clients by host.
-    std::unordered_map<std::string, std::vector<ClientEntry>> http_clients;
+        // Map from host -> list of client entries for that host. Using a hashmap
+        // makes lookups for a given host O(1) average and groups clients by host.
+        std::unordered_map<std::string, std::vector<ClientEntry>> http_clients;
         
         // WBI signature keys
         mutable std::mutex m_wbiMutex_;

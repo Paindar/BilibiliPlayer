@@ -57,12 +57,6 @@ namespace network
         LOG_DEBUG("NetworkManager destroyed");
     }
     
-    NetworkManager& NetworkManager::instance()
-    {
-        static NetworkManager instance;
-        return instance;
-    }
-    
     void NetworkManager::configure(const QString& platformDir, int timeoutMs, const QString& proxyUrl)
     {
         LOG_INFO("Configuring NetworkManager - timeout: {}ms, proxy: {}", timeoutMs, proxyUrl.toStdString());
@@ -77,8 +71,12 @@ namespace network
             if (!proxyUrl.isEmpty()) {
                 // TODO: Implement proxy support
             }
-            if (!m_biliInterface->loadConfig()) {
-                LOG_WARN("BilibiliNetworkInterface failed to load configuration");
+            if (m_biliInterface->loadConfig()) {
+                LOG_INFO("BilibiliNetworkInterface loaded configuration successfully.");
+            } else if (m_biliInterface->initializeDefaultConfig()) {
+                LOG_INFO("BilibiliNetworkInterface configured successfully.");
+            } else {
+                LOG_WARN("BilibiliNetworkInterface failed to initialize default configuration.");
                 m_biliInterface.reset();
             }
         }
@@ -88,7 +86,19 @@ namespace network
         m_configured = true;
         LOG_INFO("NetworkManager configuration complete");
     }
-    
+
+    void NetworkManager::saveConfiguration()
+    {
+        if (m_biliInterface) {
+            if (m_biliInterface->saveConfig()) {
+                LOG_INFO("BilibiliNetworkInterface configuration saved successfully.");
+            } else {
+                LOG_WARN("BilibiliNetworkInterface failed to save configuration.");
+            }
+        }
+        //TODO save other interfaces' configurations if exists.
+    }
+
     // std::weak_ptr<BilibiliNetworkInterface> NetworkManager::getBiliNetworkInterface()
     // {
     //     return m_biliInterface;
@@ -143,6 +153,15 @@ namespace network
 
     std::future<uint64_t> NetworkManager::getStreamSizeByParamsAsync(SupportInterface platform, const QString &params)
     {
+        if (checkPlatformStatus(platform) == false) {
+            return std::async(std::launch::async, [platform, params]() -> uint64_t {
+                LOG_ERROR("Requested platform is not configured for stream size query, "
+                    "platform enum: {}, params: {}", 
+                    static_cast<int>(platform), 
+                    params.toStdString());
+                return 0;
+            });
+        }
         switch (platform) {
             case SupportInterface::Bilibili:
                 return std::async(std::launch::async, [this, params]() -> uint64_t {
@@ -168,6 +187,16 @@ namespace network
 
     std::future<void> NetworkManager::downloadAsync(SupportInterface platform, const QString &url, const QString &filepath)
     {
+        if (checkPlatformStatus(platform) == false) {
+            return std::async(std::launch::async, [platform, url, filepath]() -> void {
+                LOG_ERROR("Requested platform is not configured for download, "
+                    "platform enum: {}, url: {}, filepath: {}", 
+                    static_cast<int>(platform), 
+                    url.toStdString(), 
+                    filepath.toStdString());
+                throw std::runtime_error("Platform not configured for download");
+            });
+        }
         switch (platform) {
             case SupportInterface::Bilibili:
                 return std::async(std::launch::async, [this, url, filepath]() -> void {
@@ -237,9 +266,18 @@ namespace network
 
     std::future<std::shared_ptr<std::istream>> NetworkManager::getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath)
     {
+        if (checkPlatformStatus(platform) == false) {
+            return std::async(std::launch::async, [platform, params, savepath]() -> std::shared_ptr<std::istream> {
+                LOG_ERROR("Requested platform is not configured for streaming, "
+                    "platform enum: {}, params: {}, savepath: {}", 
+                    static_cast<int>(platform), 
+                    params.toStdString(),
+                    savepath.toStdString());
+                throw std::runtime_error("Platform not configured for streaming");
+            });
+        }
         switch (platform) {
             case SupportInterface::Bilibili:
-
                 return std::async(std::launch::async, [this, params, savepath]() -> std::shared_ptr<std::istream> {
                     try {
                         // Create streaming buffer (5MB buffer for smooth streaming)
@@ -379,11 +417,28 @@ namespace network
         return true;
     }
 
+    bool NetworkManager::checkPlatformStatus(SupportInterface platform)
+    {
+        switch(platform)
+        {
+            case SupportInterface::Bilibili:
+                return m_biliInterface != nullptr;
+            default:
+                return false;
+        }
+    }
+
     std::future<QList<SearchResult>> NetworkManager::performBilibiliSearchAsync(
         const QString &keyword, int maxResults, std::atomic<bool> &cancelFlag)
     {
         if (cancelFlag.load()) {
             return {};
+        }
+        if (checkPlatformStatus(SupportInterface::Bilibili) == false) {
+            return std::async(std::launch::async, [keyword]() -> QList<SearchResult> {
+                LOG_ERROR("Bilibili interface not configured for search, keyword: {}", keyword.toStdString());
+                throw std::runtime_error("Bilibili interface not configured for search");
+            });
         }
 
         auto fut = std::async(std::launch::async, [this, keyword, maxResults, &cancelFlag]() -> QList<SearchResult> {
