@@ -137,6 +137,8 @@ private:
     std::atomic<bool> destroying_;
     std::atomic<bool> decodeCompleted_;
     std::atomic<bool> streamConsumptionFinished_;
+    // Cumulative decoded sample-frames (samples per channel). Used for diagnostics.
+    std::atomic<int64_t> m_decoded_samples{0};
 
     // Used to notify the waiting decodeThread.
     mutable std::mutex decodeStateMutex;

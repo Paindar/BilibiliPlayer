@@ -21,7 +21,8 @@ FFmpegStreamDecoder::FFmpegStreamDecoder(QObject* parent)
       playing_(false),
       destroying_(false),
       decodeCompleted_(false),
-      streamConsumptionFinished_(false)
+    streamConsumptionFinished_(false),
+    m_decoded_samples(0)
 {
 }
 
@@ -415,6 +416,15 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
                     QVariantHash data{};
                     proc->postEvent(AudioEventProcessor::DECODING_FINISHED, data);
                 }
+                // Log cumulative decoded duration for diagnostics
+                {
+                    int64_t samples = m_decoded_samples.load(std::memory_order_relaxed);
+                    double approx_seconds = 0.0;
+                    if (audio_format_.sample_rate > 0) {
+                        approx_seconds = static_cast<double>(samples) / static_cast<double>(audio_format_.sample_rate);
+                    }
+                    LOG_INFO("Decoding summary: decoded_samples={}, approx_seconds={} (sample_rate={})", samples, approx_seconds, audio_format_.sample_rate);
+                }
                 break;
             } else {
                 LOG_ERROR("Error reading frame: {}", ret);
@@ -541,6 +551,9 @@ std::shared_ptr<AudioFrame> FFmpegStreamDecoder::decodeFrame(AVFrame* frame) {
     int actual_size = converted_samples * out_channels * bytes_per_sample;
     audio_frame->data.resize(actual_size);
     
+    // Update diagnostic counter: converted_samples is samples per channel
+    m_decoded_samples.fetch_add(static_cast<int64_t>(converted_samples), std::memory_order_relaxed);
+
     return audio_frame;
 }
 

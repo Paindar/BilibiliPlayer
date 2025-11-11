@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QThread>
 #include <QTimer>
+#include <QPointer>
 #include <chrono>
 #include <fmt/format.h>
 #include <fstream>
@@ -340,9 +341,20 @@ void AudioPlayerController::registerEventHandlers()
             QThread* objThread = this->thread();
             QThread* currentThread = QThread::currentThread();
             if (objThread != currentThread) {
-                LOG_WARN("AudioPlayerController event handler called from wrong thread (obj: {}, current: {})",
-                            static_cast<void*>(objThread->thread()),
-                            static_cast<void*>(currentThread));
+                // This is expected: AudioEventProcessor runs in a worker thread and posts events to handlers.
+                // Marshal the handler to the controller thread instead of warning at runtime.
+                // LOG_DEBUG("AudioPlayerController event handler invoked from different thread (obj: {}, current: {}) - marshaling to controller thread",
+                //             static_cast<void*>(objThread->thread()),
+                //             static_cast<void*>(currentThread));
+                // Marshal the handler to this object's thread to avoid QObject/QTimer usage from other threads.
+                QPointer<AudioPlayerController> self(this);
+                if (self) {
+                    // Use QMetaObject::invokeMethod overload that accepts a functor (Qt 5.10+/Qt6) to post to the object's thread.
+                    QMetaObject::invokeMethod(self.data(), [handler, data]() mutable {
+                        handler(data);
+                    }, Qt::QueuedConnection);
+                }
+                return;
             }
             handler(data);
         };
