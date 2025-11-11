@@ -1,16 +1,20 @@
 #pragma once
 
 #include <QWidget>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
+#include <QString>
 #include <QMetaType>
 #include <QUuid>
 #include "../navigator/i_navigable_page.h"
 #include "../../playlist/playlist.h"
 
+
 QT_BEGIN_NAMESPACE
 class Ui_PlaylistPageForm;
 QT_END_NAMESPACE
+
+// Forward-declare Qt classes used only as pointers in this header to reduce compile-time dependencies
+class QTreeWidget;
+class QTreeWidgetItem;
 
 class PlaylistManager;
 

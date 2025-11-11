@@ -1,9 +1,13 @@
 #pragma once
 
 #include <QWidget>
-#include <QPushButton>
-#include <QLabel>
-#include <QMouseEvent>
+#include <QPoint>
+#include <QString>
+
+// Forward-declare frequently-used Qt widgets to reduce header includes
+class QPushButton;
+class QLabel;
+class QMouseEvent;
 
 QT_BEGIN_NAMESPACE
 class Ui_CustomTitleBar;

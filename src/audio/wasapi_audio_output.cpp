@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 #include <comdef.h>
+#include <chrono>
 
 WASAPIAudioOutputUnsafe::WASAPIAudioOutputUnsafe()
     : device_enumerator_(nullptr), audio_device_(nullptr), audio_client_(nullptr), render_client_(nullptr),
@@ -95,36 +96,36 @@ bool WASAPIAudioOutputUnsafe::initialize(int sample_rate, int channels, int bits
     return true;
 }
 
-void WASAPIAudioOutputUnsafe::cleanup() {
-    
+void WASAPIAudioOutputUnsafe::cleanup() 
+{
     if (audio_client_) {
         audio_client_->Stop();
         audio_client_->Release();
         audio_client_ = nullptr;
     }
-    
+
     is_playing_ = false;
-    
+
     if (render_client_) {
         render_client_->Release();
         render_client_ = nullptr;
     }
-    
+
     if (audio_device_) {
         audio_device_->Release();
         audio_device_ = nullptr;
     }
-    
+
     if (device_enumerator_) {
         device_enumerator_->Release();
         device_enumerator_ = nullptr;
     }
-    
+
     if (wave_format_) {
         CoTaskMemFree(wave_format_);
         wave_format_ = nullptr;
     }
-    
+
     CoUninitialize();
 }
 
@@ -291,4 +292,35 @@ int WASAPIAudioOutputUnsafe::getAvailableFrames() const {
         return static_cast<int>(buffer_frame_count_ - frames_available);
     }
     return 0;
+}
+
+int WASAPIAudioOutputUnsafe::getCurrentFrames() const
+{
+    if (!audio_client_ || !initialized_) {
+        return 0;
+    }
+    
+    UINT32 currentFrames = 0;
+    HRESULT hr = audio_client_->GetCurrentPadding(&currentFrames);
+    if (SUCCEEDED(hr)) {
+        return static_cast<int>(currentFrames);
+    }
+    return 0;
+}
+
+void WASAPIAudioOutputUnsafe::setVolume(float volume)
+{
+    if (!initialized_) return;
+
+    // Clamp volume between 0.0 and 1.0
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 1.0f) volume = 1.0f;
+
+    // Set volume on the audio client
+    // if (audio_client_) {
+    //     HRESULT hr = audio_client_->SetMasterVolume(volume, nullptr);
+    //     if (FAILED(hr)) {
+    //         LOG_ERROR("WASAPI: Failed to set volume: 0x{:X}", static_cast<unsigned long>(hr));
+    //     }
+    // }
 }

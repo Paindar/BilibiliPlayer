@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QColor>
+#include <QString>
 #include "../navigator/i_navigable_page.h"
 
 class ConfigManager;

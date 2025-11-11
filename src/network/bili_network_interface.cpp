@@ -167,7 +167,7 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
     std::unordered_map<std::string, std::string> params = {
         {"search_type", "video"},
         {"keyword", title},
-        // {"order", "totalrank"},
+        {"order", "totalrank"},
         {"page", std::to_string(page)}
     };
     

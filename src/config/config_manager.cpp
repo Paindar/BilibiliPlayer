@@ -34,7 +34,7 @@ void ConfigManager::initialize(const QString& workspaceDir)
     if (!wsDir.exists()) {
         if (!wsDir.mkpath(m_workspaceDir)) {
             std::string error = fmt::format("Failed to create workspace directory: {}", m_workspaceDir.toStdString());
-            LOG_ERROR(error);
+            LOG_ERROR("{}", error);
             throw std::runtime_error(error);
         }
         LOG_INFO("Created workspace directory: {}", m_workspaceDir.toStdString());

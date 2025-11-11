@@ -15,6 +15,7 @@ class BilibiliPlayerConan(ConanFile):
         "openssl/3.6.0",
         "spdlog/1.16.0",
         "fmt/12.0.0",
+        "magic_enum/0.9.7",
         "catch2/3.11.0"
     )
 

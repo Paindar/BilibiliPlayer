@@ -29,6 +29,9 @@ set(PROJECT_SOURCES
     ui/page/settings_page.cpp
     ui/page/settings_page.h
     ui/page/settings_page.ui
+
+    # Event bus components
+    event/event_bus.hpp
     
     # Network components
     network/bili_network_interface.cpp
@@ -43,7 +46,10 @@ set(PROJECT_SOURCES
     audio/wasapi_audio_output.h
     audio/audio_player_controller.cpp
     audio/audio_player_controller.h
-    
+    audio/audio_event_processor.cpp
+    audio/audio_event_processor.h
+    audio/audio_frame.h
+
     # Streaming components
     stream/realtime_pipe.cpp
     stream/realtime_pipe.hpp
@@ -66,6 +72,7 @@ set(PROJECT_SOURCES
 
     # Utility components
     util/circular_buffer.hpp
+    util/safe_queue.hpp
     util/md5.h
     util/md5.cpp
     util/urlencode.h
@@ -79,6 +86,7 @@ find_package(JsonCpp REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
+find_package(magic_enum REQUIRED)
 
 # Create the executable
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -115,9 +123,12 @@ target_link_libraries(BilibiliPlayer PRIVATE
     OpenSSL::Crypto
     spdlog::spdlog
     fmt::fmt
+    magic_enum::magic_enum
     # Windows-specific libraries for WASAPI
     ole32
     oleaut32
+    # dbghelp for stack trace capture on Windows
+    dbghelp
 )
 
 # Add include directories for organized header structure

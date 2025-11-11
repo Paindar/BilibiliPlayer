@@ -1,6 +1,10 @@
 #include "custom_title_bar.h"
 #include "ui_custom_title_bar.h"
 #include <QApplication>
+#include <QMouseEvent>
+#include <QPushButton>
+#include <QLineEdit>
+#include <QPoint>
 
 CustomTitleBar::CustomTitleBar(QWidget *parent)
     : QWidget(parent)

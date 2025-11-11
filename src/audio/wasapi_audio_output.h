@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <thread>
+#include <atomic>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <windows.h>
@@ -9,7 +12,8 @@
 /**
  * WASAPIAudioOutputUnsafe - low-level WASAPI audio output handler (not thread-safe)
  */
-class WASAPIAudioOutputUnsafe {
+class WASAPIAudioOutputUnsafe
+{
 public:
     explicit WASAPIAudioOutputUnsafe();
     ~WASAPIAudioOutputUnsafe();
@@ -23,7 +27,8 @@ public:
     bool stop();
     bool isPlaying() const;
     int getAvailableFrames() const;  // Get number of frames available in buffer
-
+    int getCurrentFrames() const;
+    void setVolume(float volume); // Volume: 0.0 - 1.0
 private:
     // WASAPI COM interfaces
     IMMDeviceEnumerator* device_enumerator_;

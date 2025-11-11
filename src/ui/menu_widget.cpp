@@ -17,6 +17,8 @@
 #include <QHBoxLayout>
 #include <QRect>
 #include <QTimer>
+#include <QThread>
+#include <QMetaObject>
 #include <QFontMetrics>
 #include <QShowEvent>
 #include "page/search_page.h"
@@ -62,16 +64,20 @@ MenuWidget::MenuWidget(QWidget *parent)
     
     // Connect to PlaylistManager signals
     if (PLAYLIST_MANAGER) {
-        connect(PLAYLIST_MANAGER, &PlaylistManager::categoriesLoaded, this, &MenuWidget::onCategoriesLoaded);
-        connect(PLAYLIST_MANAGER, &PlaylistManager::categoryAdded, this, &MenuWidget::onCategoryAdded);
-        
-        // Check if categories are already loaded (PlaylistManager initialized before UI)
-        // Use QTimer::singleShot to ensure this runs after constructor completes
-        QTimer::singleShot(0, this, [this]() {
+        // Ensure slots run on the UI thread via queued connections
+        connect(PLAYLIST_MANAGER, &PlaylistManager::categoriesLoaded, this, &MenuWidget::onCategoriesLoaded, Qt::QueuedConnection);
+        connect(PLAYLIST_MANAGER, &PlaylistManager::categoryAdded, this, &MenuWidget::onCategoryAdded, Qt::QueuedConnection);
+
+        // If categories are already present, schedule update on the widget (GUI) thread.
+    LOG_DEBUG("MenuWidget ctor: scheduling updateCategories (queued) on thread {} (widget thread {})",
+          (void*)QThread::currentThread(), (void*)this->thread());
+        QMetaObject::invokeMethod(this, [this]() {
             if (PLAYLIST_MANAGER) {
+                LOG_DEBUG("updateCategories invoked (queued) on thread {} (widget thread {})",
+                          (void*)QThread::currentThread(), (void*)this->thread());
                 updateCategories();
             }
-        });
+        }, Qt::QueuedConnection);
     }
 }
 
@@ -491,7 +497,7 @@ void MenuWidget::addPlaylistToCategory(QTreeWidgetItem* categoryItem, const Menu
         .uuid = QUuid::createUuid()
     };
     if (!PLAYLIST_MANAGER->addPlaylist(playlistInfo, categoryUuid)) {
-        LOG_WARN("Failed to add playlist to manager: %s", playlist.name.toUtf8().constData());
+        LOG_WARN("Failed to add playlist to manager: {}", playlist.name.toStdString());
         return;
     }
     // Create playlist item and add to category
@@ -509,42 +515,50 @@ void MenuWidget::updateAddCategoryButtonPosition()
 {
     if (!m_addCategoryButton || !m_playlistCategory) return;
     
-    // Use QTimer::singleShot to position after the widget is fully rendered
-    QTimer::singleShot(0, this, [this]() {
+    // Schedule position update on widget thread (queued) to avoid starting timers from other threads
+    LOG_DEBUG("updateAddCategoryButtonPosition called on thread {} (widget thread {})",
+              (void*)QThread::currentThread(), (void*)this->thread());
+    QMetaObject::invokeMethod(this, [this]() {
+    LOG_DEBUG("updateAddCategoryButtonPosition queued lambda running on thread {} (widget thread {})",
+          (void*)QThread::currentThread(), (void*)this->thread());
         if (!m_addCategoryButton || !m_playlistCategory) return;
-        
+
         QRect itemRect = ui->menuTree->visualItemRect(m_playlistCategory);
         if (itemRect.isValid()) {
             // Position button on the far right of the tree widget
             int treeWidth = ui->menuTree->width();
             int buttonX = treeWidth - 30; // 30px from right edge (20px button + 10px margin)
             int buttonY = itemRect.top() + (itemRect.height() - 20) / 2; // Center vertically
-            
+
             m_addCategoryButton->move(buttonX, buttonY);
             m_addCategoryButton->show();
         }
-    });
+    }, Qt::QueuedConnection);
 }
 
 void MenuWidget::updateAddPlaylistButtonPosition(QTreeWidgetItem* categoryItem)
 {
     if (!m_addPlaylistButton || !categoryItem) return;
     
-    // Use QTimer::singleShot to position after the widget is fully rendered
-    QTimer::singleShot(0, this, [this, categoryItem]() {
+    // Schedule playlist-button position update on widget thread (queued)
+    LOG_DEBUG("updateAddPlaylistButtonPosition called on thread {} (widget thread {})",
+              (void*)QThread::currentThread(), (void*)this->thread());
+    QMetaObject::invokeMethod(this, [this, categoryItem]() {
+    LOG_DEBUG("updateAddPlaylistButtonPosition queued lambda running on thread {} (widget thread {})",
+          (void*)QThread::currentThread(), (void*)this->thread());
         if (!m_addPlaylistButton || !categoryItem) return;
-        
+
         QRect itemRect = ui->menuTree->visualItemRect(categoryItem);
         if (itemRect.isValid()) {
             // Position button on the far right of the tree widget
             int treeWidth = ui->menuTree->width();
             int buttonX = treeWidth - 30; // 30px from right edge
             int buttonY = itemRect.top() + (itemRect.height() - 20) / 2; // Center vertically
-            
+
             m_addPlaylistButton->move(buttonX, buttonY);
             m_addPlaylistButton->show();
         }
-    });
+    }, Qt::QueuedConnection);
 }
 
 void MenuWidget::onAddCategoryButtonClicked()
@@ -578,7 +592,7 @@ void MenuWidget::createNewCategoryWithName(const QString& name)
         .uuid = QUuid::createUuid()
     };
     if (!PLAYLIST_MANAGER->addCategory(categoryInfo)) {
-        LOG_ERROR("Failed to add category to manager: %s", name.toUtf8().constData());
+        LOG_ERROR("Failed to add category to manager: {}", name.toStdString());
         return;
     }
     
@@ -592,7 +606,7 @@ void MenuWidget::createNewCategoryWithName(const QString& name)
     // Emit signal for external handling
     emit categoryCreated(categoryInfo.uuid.toString(QUuid::WithoutBraces), name);
 
-    LOG_DEBUG("Created new category: %s as subitem of Playlists", name.toUtf8().constData());
+    LOG_DEBUG("Created new category: {} as subitem of Playlists", name.toStdString());
 }
 
 void MenuWidget::onTreeItemEntered(QTreeWidgetItem* item, int column)
@@ -650,21 +664,24 @@ void MenuWidget::onAddPlaylistButtonClicked()
 
         addPlaylistToCategory(category_, newPlaylist);
 
-        LOG_DEBUG("Created new playlist: %s in category: %s",
-                  playlistName.toUtf8().constData(),
-                  category_->text(0).toUtf8().constData());
+    LOG_DEBUG("Created new playlist: {} in category: {}",
+          playlistName.toStdString(),
+          category_->text(0).toStdString());
     }
 }
 
 void MenuWidget::onCategoriesLoaded(int categoryCount, int playlistCount)
 {
-    LOG_DEBUG("Categories loaded signal received: %d categories, %d playlists", categoryCount, playlistCount);
+    LOG_DEBUG("onCategoriesLoaded called on thread {} (widget thread {}) - {} categories, {} playlists",
+              (void*)QThread::currentThread(), (void*)this->thread(), categoryCount, playlistCount);
     
     updateCategories();
 }
 
 void MenuWidget::onCategoryAdded(const playlist::CategoryInfo& category)
 {
+    LOG_DEBUG("onCategoryAdded invoked on thread {} (widget thread {})",
+              (void*)QThread::currentThread(), (void*)this->thread());
     if (!m_playlistCategory) {
         LOG_WARN("Cannot add category to menu: playlist category is null");
         return;
@@ -696,7 +713,7 @@ void MenuWidget::onCategoryAdded(const playlist::CategoryInfo& category)
         categoryItem->addChild(playlistItem);
     }
     
-    LOG_DEBUG("Added category to menu: %s", category.name.toUtf8().constData());
+    LOG_DEBUG("Added category to menu: {} (invoked on thread {})", category.name.toStdString(), (void*)QThread::currentThread());
 }
 
 void MenuWidget::deleteCategoryWithConfirmation(QTreeWidgetItem* categoryItem)
@@ -749,11 +766,11 @@ void MenuWidget::deleteCategoryWithConfirmation(QTreeWidgetItem* categoryItem)
             }
             delete categoryItem;
             
-            LOG_INFO("Deleted category: %s with %d playlists", categoryName.toUtf8().constData(), playlistCount);
+            LOG_INFO("Deleted category: {} with {} playlists", categoryName.toStdString(), playlistCount);
         } else {
             QMessageBox::warning(this, "Delete Failed", 
                                QString("Failed to delete category \"%1\" from storage.").arg(categoryName));
-            LOG_ERROR("Failed to delete category from manager: %s", categoryName.toUtf8().constData());
+            LOG_ERROR("Failed to delete category from manager: {}", categoryName.toStdString());
         }
     }
 }
@@ -803,11 +820,11 @@ void MenuWidget::deletePlaylistWithConfirmation(QTreeWidgetItem* playlistItem)
             }
             delete playlistItem;
             
-            LOG_INFO("Deleted playlist: %s", playlistName.toUtf8().constData());
+            LOG_INFO("Deleted playlist: {}", playlistName.toStdString());
         } else {
             QMessageBox::warning(this, "Delete Failed", 
                                QString("Failed to delete playlist \"%1\" from storage.").arg(playlistName));
-            LOG_ERROR("Failed to delete playlist from manager: %s", playlistName.toUtf8().constData());
+            LOG_ERROR("Failed to delete playlist from manager: {}", playlistName.toStdString());
         }
     }
 }

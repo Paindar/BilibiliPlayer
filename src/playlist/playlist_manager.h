@@ -5,7 +5,7 @@
 #include <QList>
 #include <QHash>
 #include <QUuid>
-#include <QTimer>
+class QTimer;
 #include <QReadWriteLock>
 #include <QJsonDocument>
 #include <QJsonObject>

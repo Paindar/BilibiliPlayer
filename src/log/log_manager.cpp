@@ -3,6 +3,9 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
 
 LogManager& LogManager::instance()
 {
@@ -19,6 +22,40 @@ void LogManager::initialize(const std::string& logDirectory)
     try {
         m_logDirectory = logDirectory;
         
+        // Load optional properties file (log.properties) to allow runtime configuration
+        // Search order: <logDirectory>/log.properties, ./log.properties, ./config/log.properties
+        std::unordered_map<std::string, std::string> props;
+        std::vector<std::filesystem::path> candidates = {
+            std::filesystem::current_path() / "config" / "log.properties",
+            std::filesystem::path(logDirectory) / "log.properties",
+            std::filesystem::current_path() / "log.properties"
+        };
+        for (const auto &p : candidates) {
+            if (std::filesystem::exists(p)) {
+                std::ifstream ifs(p);
+                if (ifs) {
+                    std::string line;
+                    while (std::getline(ifs, line)) {
+                        // trim
+                        auto start = line.find_first_not_of(" \t\r\n");
+                        if (start == std::string::npos) continue;
+                        if (line[start] == '#') continue;
+                        auto eq = line.find('=', start);
+                        if (eq == std::string::npos) continue;
+                        std::string key = line.substr(start, eq - start);
+                        std::string val = line.substr(eq + 1);
+                        // trim trailing whitespace
+                        auto end = val.find_last_not_of(" \t\r\n");
+                        if (end != std::string::npos) val = val.substr(0, end + 1);
+                        // lowercase key
+                        for (auto &c : key) c = static_cast<char>(::tolower(c));
+                        props[key] = val;
+                    }
+                }
+                break; // use first found properties file
+            }
+        }
+        
         // Ensure log directory exists
         std::filesystem::create_directories(logDirectory);
         
@@ -27,16 +64,59 @@ void LogManager::initialize(const std::string& logDirectory)
         
         // Console sink (colored output)
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-        console_sink->set_level(spdlog::level::info);
-        console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] %v");
+        // allow override via properties file
+        if (props.count("console_level")) {
+            std::string lvl = props["console_level"];
+            for (auto &c : lvl) c = static_cast<char>(::toupper(c));
+            if (lvl == "TRACE") console_sink->set_level(spdlog::level::trace);
+            else if (lvl == "DEBUG") console_sink->set_level(spdlog::level::debug);
+            else if (lvl == "INFO") console_sink->set_level(spdlog::level::info);
+            else if (lvl == "WARN") console_sink->set_level(spdlog::level::warn);
+            else if (lvl == "ERROR") console_sink->set_level(spdlog::level::err);
+            else if (lvl == "CRITICAL") console_sink->set_level(spdlog::level::critical);
+        } else {
+            console_sink->set_level(spdlog::level::info);
+        }
+        if (props.count("console_pattern")) {
+            console_sink->set_pattern(props["console_pattern"]);
+        } else {
+            console_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] %v");
+        }
         sinks.push_back(console_sink);
         
         // File sink (rotating files)
-        std::string logFilePath = logDirectory + "/bilibili_player.log";
+        std::string fileName = "bilibili_player.log";
+        if (props.count("file")) fileName = props["file"];
+        std::string logFilePath = std::filesystem::path(logDirectory).append(fileName).string();
+        size_t maxFileSize = 1024ULL * 1024ULL * 10ULL; // default 10MB
+        size_t maxFiles = 5;
+        if (props.count("max_size")) {
+            try { maxFileSize = static_cast<size_t>(std::stoull(props["max_size"])); } catch(...) {}
+        }
+        if (props.count("max_files")) {
+            try { maxFiles = static_cast<size_t>(std::stoul(props["max_files"])); } catch(...) {}
+        }
         auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            logFilePath, 1024 * 1024 * 10, 5); // 10MB per file, keep 5 files
-        file_sink->set_level(spdlog::level::trace);
-        file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%t] [%s:%#] %v");
+            logFilePath, maxFileSize, maxFiles);
+        // allow override for file level
+        if (props.count("file_level")) {
+            std::string lvl = props["file_level"];
+            for (auto &c : lvl) c = static_cast<char>(::toupper(c));
+            if (lvl == "TRACE") file_sink->set_level(spdlog::level::trace);
+            else if (lvl == "DEBUG") file_sink->set_level(spdlog::level::debug);
+            else if (lvl == "INFO") file_sink->set_level(spdlog::level::info);
+            else if (lvl == "WARN") file_sink->set_level(spdlog::level::warn);
+            else if (lvl == "ERROR") file_sink->set_level(spdlog::level::err);
+            else if (lvl == "CRITICAL") file_sink->set_level(spdlog::level::critical);
+            else file_sink->set_level(spdlog::level::trace);
+        } else {
+            file_sink->set_level(spdlog::level::trace);
+        }
+        if (props.count("file_pattern")) {
+            file_sink->set_pattern(props["file_pattern"]);
+        } else {
+            file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%t] [%s:%#] %v");
+        }
         sinks.push_back(file_sink);
         
         // Create logger with both sinks

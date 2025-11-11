@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QTimer>
 #include <algorithm>
 #include <optional>
 #include <functional>

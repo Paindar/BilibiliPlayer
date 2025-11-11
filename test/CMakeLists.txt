@@ -15,6 +15,7 @@ find_package(OpenSSL REQUIRED)
 ## Single combined test executable for the project
 add_executable(BilibiliPlayerTest
 	realtime_pipe_test.cpp
+	event_bus_test.cpp
 	# streaming_buffer_test.cpp
 	# streaming_integration_test.cpp
 	# streaming_cancellation_test.cpp

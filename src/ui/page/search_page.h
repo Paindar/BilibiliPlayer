@@ -1,8 +1,9 @@
 #pragma once
 
 #include <QWidget>
-#include "../navigator/i_navigable_page.h"
-#include "../../network/network_manager.h"
+#include <QString>
+#include <navigator/i_navigable_page.h>
+#include <network/network_manager.h>
 
 QT_BEGIN_NAMESPACE
 class Ui_SearchPage;

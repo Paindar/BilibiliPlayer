@@ -1,13 +1,15 @@
 #pragma once
 
 #include <QObject>
+#include <QString>
 #include <memory>
 #include <functional>
 
 // Forward declarations
 class PlaylistManager;
 class ConfigManager;
-class AudioPlayerController;
+namespace audio { class AudioPlayerController; }
+class EventBus;
 
 // Network namespace forward declaration
 namespace network {
@@ -36,8 +38,9 @@ public:
     // Manager access (returns nullptr if not yet initialized)
     PlaylistManager* playlistManager() const { return m_playlistManager.get(); }
     ConfigManager* configManager() const { return m_configManager.get(); }
-    AudioPlayerController* audioPlayerController() const { return m_audioPlayerController.get(); }
+    audio::AudioPlayerController* audioPlayerController() const { return m_audioPlayerController.get(); }
     network::NetworkManager* networkManager() const { return m_networkManager.get(); }
+    EventBus* eventBus() const { return m_eventBus.get(); }
     
     // Check initialization status
     bool isInitialized() const { return m_initialized; }
@@ -64,6 +67,7 @@ private:
     
     // Phase-based initialization
     void initializeConfigManager(const QString& workspaceDir);
+    void initializeEventBus();
     void initializeNetworkManager();
     void initializePlaylistManager();
     void initializeAudioPlayerController();
@@ -73,8 +77,9 @@ private:
     
     // Smart pointers for automatic cleanup
     std::unique_ptr<ConfigManager> m_configManager;
+    std::unique_ptr<EventBus> m_eventBus;
     std::unique_ptr<PlaylistManager> m_playlistManager;
-    std::unique_ptr<AudioPlayerController> m_audioPlayerController;
+    std::unique_ptr<audio::AudioPlayerController> m_audioPlayerController;
     std::unique_ptr<network::NetworkManager> m_networkManager;
     
     bool m_initialized = false;
@@ -87,3 +92,4 @@ private:
 #define CONFIG_MANAGER APP_CONTEXT.configManager()
 #define AUDIO_PLAYER_CONTROLLER APP_CONTEXT.audioPlayerController()
 #define NETWORK_MANAGER APP_CONTEXT.networkManager()
+#define EVENT_BUS APP_CONTEXT.eventBus()

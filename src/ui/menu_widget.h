@@ -1,15 +1,19 @@
 #pragma once
 
 #include <QWidget>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
 #include <QMetaType>
-#include <QMenu>
-#include <QAction>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QShowEvent>
+#include <QIcon>
 #include <QUuid>
+#include <QString>
+
+// Forward-declare Qt UI classes to reduce header dependencies. Definitions are included in .cpp files.
+class QTreeWidget;
+class QTreeWidgetItem;
+class QMenu;
+class QAction;
+class QLineEdit;
+class QPushButton;
+class QShowEvent;
 
 QT_BEGIN_NAMESPACE
 class Ui_MenuWidget;

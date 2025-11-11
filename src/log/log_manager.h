@@ -34,6 +34,7 @@ public:
     void trace(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->trace(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -41,6 +42,7 @@ public:
     void debug(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->debug(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -48,6 +50,7 @@ public:
     void info(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->info(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -55,6 +58,7 @@ public:
     void warn(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->warn(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -62,6 +66,7 @@ public:
     void error(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->error(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -69,6 +74,7 @@ public:
     void critical(const std::string& format, Args&&... args) {
         if (m_logger) {
             m_logger->critical(fmt::format(format, std::forward<Args>(args)...));
+            m_logger->flush();
         }
     }
     
@@ -92,10 +98,13 @@ private:
     bool m_initialized = false;
 };
 
-// Convenience macros for easy logging
-#define LOG_TRACE(...) LogManager::instance().trace(__VA_ARGS__)
-#define LOG_DEBUG(...) LogManager::instance().debug(__VA_ARGS__)
-#define LOG_INFO(...) LogManager::instance().info(__VA_ARGS__)
-#define LOG_WARN(...) LogManager::instance().warn(__VA_ARGS__)
-#define LOG_ERROR(...) LogManager::instance().error(__VA_ARGS__)
-#define LOG_CRITICAL(...) LogManager::instance().critical(__VA_ARGS__)
+// Convenience macros for easy logging. These forward source location to spdlog so
+// sink patterns using [%s:%#] get populated. The message itself is the provided
+// format and args (no automatic function/line prefix) to avoid duplicate info
+// when the sink pattern already includes file/line.
+#define LOG_TRACE(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::trace, __VA_ARGS__); } while(0)
+#define LOG_DEBUG(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::debug, __VA_ARGS__); } while(0)
+#define LOG_INFO(...)  do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::info, __VA_ARGS__); } while(0)
+#define LOG_WARN(...)  do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::warn,  __VA_ARGS__); } while(0)
+#define LOG_ERROR(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::err, __VA_ARGS__); } while(0)
+#define LOG_CRITICAL(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::critical, __VA_ARGS__); } while(0)

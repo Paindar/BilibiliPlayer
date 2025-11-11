@@ -1,10 +1,15 @@
 #include "ffmpeg_decoder.h"
 
 #include <log/log_manager.h>
+#include "audio_event_processor.h"
+#include <QVariantHash>
+#include <QString>
 
-FFmpegStreamDecoder::FFmpegStreamDecoder()
-    : format_ctx_(nullptr),
-      codec_ctx_(nullptr),
+namespace audio {
+FFmpegStreamDecoder::FFmpegStreamDecoder(QObject* parent)
+    : QObject(parent)
+        , format_ctx_(nullptr)
+        , codec_ctx_(nullptr),
       codec_(nullptr),
       swr_ctx_(nullptr),
       audioStreamIndex(-1),
@@ -20,6 +25,11 @@ FFmpegStreamDecoder::FFmpegStreamDecoder()
 {
 }
 
+void FFmpegStreamDecoder::setEventProcessor(std::shared_ptr<AudioEventProcessor> processor)
+{
+    m_eventProcessor = processor;
+}
+
 FFmpegStreamDecoder::~FFmpegStreamDecoder()
 {
     destroying_.store(true);
@@ -29,9 +39,7 @@ FFmpegStreamDecoder::~FFmpegStreamDecoder()
     decodeCondition.notify_all();
     decodeStateCondition.notify_all();
     audioFormatCondition_.notify_all();
-    if (outputFrameQueue) {
-        outputFrameQueue->cond_var.notify_all();
-    }
+    outputFrameQueue.reset();
     
     if (consumeAudioStreamThread.joinable())
     {
@@ -72,7 +80,7 @@ FFmpegStreamDecoder::~FFmpegStreamDecoder()
 
 
 bool FFmpegStreamDecoder::initialize(std::shared_ptr<std::istream> inputAudioStream, 
-    std::shared_ptr<AudioFrameQueue> outputFrameQueue)
+    std::weak_ptr<AudioFrameQueue> outputFrameQueue)
 {
     {
         std::scoped_lock lock(audioCacheMutex);
@@ -106,12 +114,26 @@ bool FFmpegStreamDecoder::startDecoding(uint64_t lenFullStream)
     LOG_INFO("FFmpegStreamDecoder starting decoding. "
             "The length of full stream is {} bytes, "
             "audioCache's capacity is {} bytes.", lenFullStream, audioCache.capacity());
+    if (lenFullStream ==0) {
+        LOG_ERROR("Invalid full stream length {}.", lenFullStream);
+        return false;
+    }
     lenFullSize = lenFullStream;
     playing_.store(true);
     decodeCompleted_.store(false);
     streamConsumptionFinished_.store(false);
-    // Start stream reader thread to fill buffer
-    consumeAudioStreamThread = std::thread(&FFmpegStreamDecoder::consumeAudioStreamFunc, this);
+    // Start stream reader thread to fill buffer (wrap entry to catch exceptions)
+    consumeAudioStreamThread = std::thread([this]() {
+        try {
+            this->consumeAudioStreamFunc();
+        } catch (const std::exception& e) {
+            LOG_ERROR("FFmpegStreamDecoder::consumeAudioStreamFunc threw: {}", e.what());
+            std::terminate();
+        } catch (...) {
+            LOG_ERROR("FFmpegStreamDecoder::consumeAudioStreamFunc threw unknown exception");
+            std::terminate();
+        }
+    });
     std::scoped_lock lock(ffmpegMutex_);
     // Setup FFmpeg for decoding
     // TODO: it must not the best way, need optimization here
@@ -202,7 +224,17 @@ bool FFmpegStreamDecoder::startDecoding(uint64_t lenFullStream)
 
     // Start decode and playback threads
     LOG_INFO("FFmpegStreamDecoder started decoding.");
-    decodeAudioBytesThread = std::thread(&FFmpegStreamDecoder::decodeAudioBytesFunc, this);
+    decodeAudioBytesThread = std::thread([this]() {
+        try {
+            this->decodeAudioBytesFunc();
+        } catch (const std::exception& e) {
+            LOG_ERROR("FFmpegStreamDecoder::decodeAudioBytesFunc threw: {}", e.what());
+            std::terminate();
+        } catch (...) {
+            LOG_ERROR("FFmpegStreamDecoder::decodeAudioBytesFunc threw unknown exception");
+            std::terminate();
+        }
+    });
     ffmpegCondition_.notify_all();
     return true;
 }
@@ -279,9 +311,11 @@ void FFmpegStreamDecoder::consumeAudioStreamFunc()
         size_t toWrite = std::min(audioCache.capacity() - audioCache.size(), sizeof(buffer));
         if (toWrite == 0) {
             // Buffer full, wait until space is available
+            LOG_DEBUG("Audio cache full ({} bytes), waiting for space to become available.", audioCache.size());
             decodeCondition.wait(lock, [this]() {
                 return audioCache.size() < audioCache.capacity() || destroying_.load();
             });
+            LOG_DEBUG("Audio cache has space available ({} bytes), resuming consumption.", audioCache.size());
             continue;
         }
         // Possible situation: stream has less data than requested,
@@ -299,15 +333,33 @@ void FFmpegStreamDecoder::consumeAudioStreamFunc()
             // LOG_DEBUG("Consumed {} bytes from input stream, audioCache size: {}", bytesRead, audioCache.size());
             decodeCondition.notify_all();
         } else {
-            // End of stream
-            LOG_INFO("Stream consumption finished - no more data from input stream.");
-            LOG_DEBUG("audioCache size at end of stream: {}", audioCache.size());
-            break;
-        }   
+            // Could be EOF or read error. Distinguish using stream state.
+            if (inputAudioStream->eof()) {
+                LOG_INFO("Stream consumption finished - no more data from input stream.");
+                LOG_DEBUG("audioCache size at end of stream: {}", audioCache.size());
+                emit readCompleted();
+                if (auto proc = m_eventProcessor.lock()) {
+                    QVariantHash data{};
+                    proc->postEvent(AudioEventProcessor::STREAM_READ_COMPLETED, data);
+                }
+                break;
+            } else {
+                // treat as read error
+                QString reason = QStringLiteral("Failed to read from input stream");
+                LOG_ERROR("Stream read error while consuming input stream.");
+                emit readError(reason);
+                if (auto proc = m_eventProcessor.lock()) {
+                    QVariantHash data{{QStringLiteral("error"), QVariant(reason)}};
+                    proc->postEvent(AudioEventProcessor::STREAM_READ_ERROR, data);
+                }
+                break;
+            }
+        }
     }
     
     // Mark stream consumption as finished and notify waiting threads
     streamConsumptionFinished_.store(true);
+    inputAudioStream.reset();
     decodeCondition.notify_all();
     LOG_INFO("Stream consumption thread completed");
 }
@@ -317,6 +369,12 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
     AVPacket* packet = av_packet_alloc();
     if (!packet) {
         LOG_ERROR("Failed to allocate AVPacket for decoding.");
+        QString reason = QStringLiteral("Failed to allocate AVPacket for decoding.");
+        emit decodingError(reason);
+        if (auto proc = m_eventProcessor.lock()) {
+            QVariantHash data{{QStringLiteral("error"), QVariant(reason)}};
+            proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+        }
         return;
     }
 
@@ -324,6 +382,12 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
     if (!frame) {
         LOG_ERROR("Failed to allocate AVFrame for decoding.");
         av_packet_free(&packet);
+        QString reason = QStringLiteral("Failed to allocate AVFrame for decoding.");
+        emit decodingError(reason);
+        if (auto proc = m_eventProcessor.lock()) {
+            QVariantHash data{{QStringLiteral("error"), QVariant(reason)}};
+            proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+        }
         return;
     }
     
@@ -345,11 +409,21 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
             if (ret == AVERROR_EOF) {
                 // At this point, we should have sufficient data or stream is truly finished
                 decodeCompleted_.store(true);
-                outputFrameQueue->cond_var.notify_all();
                 LOG_INFO("Decoding completed - av_read_frame returned EOF");
+                emit decodingFinished();
+                if (auto proc = m_eventProcessor.lock()) {
+                    QVariantHash data{};
+                    proc->postEvent(AudioEventProcessor::DECODING_FINISHED, data);
+                }
                 break;
             } else {
                 LOG_ERROR("Error reading frame: {}", ret);
+                QString reason = QStringLiteral("Error reading frame");
+                emit decodingError(reason);
+                if (auto proc = m_eventProcessor.lock()) {
+                    QVariantHash data{{QStringLiteral("code"), QVariant(ret)}, {QStringLiteral("error"), QVariant(reason)}};
+                    proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+                }
                 continue;
             }
         }
@@ -360,10 +434,18 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
         }
 
         // Send packet to decoder
-        ret = avcodec_send_packet(codec_ctx_, packet);
-        if (ret < 0) {
+            ret = avcodec_send_packet(codec_ctx_, packet);
+            if (ret < 0) {
             LOG_ERROR("Error sending packet to decoder: {}", ret);
             av_packet_unref(packet);
+            {
+                QString reason = QStringLiteral("Error sending packet to decoder");
+                emit decodingError(reason);
+                if (auto proc = m_eventProcessor.lock()) {
+                    QVariantHash data{{QStringLiteral("code"), QVariant(ret)}, {QStringLiteral("error"), QVariant(reason)}};
+                    proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+                }
+            }
             continue;
         }
 
@@ -372,30 +454,49 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
         while (ret >= 0 && playing_.load() && !destroying_.load()) {
             ret = avcodec_receive_frame(codec_ctx_, frame);
             if (ret == AVERROR(EAGAIN)){
-                if (lastRet != ret) {
-                    LOG_DEBUG("avcodec_receive_frame returned EAGAIN, continuing...");
-                }
+                // if (lastRet != ret) {
+                //     LOG_DEBUG("avcodec_receive_frame returned EAGAIN, continuing...");
+                // }
                 continue;
             } else if (ret == AVERROR_EOF) {
-                LOG_DEBUG("avcodec_receive_frame returned EOF, ending frame reception loop, frameQueue size: {}", outputFrameQueue->frame_queue.size());
+                if (outputFrameQueue.expired() == false) {
+                    auto sharedQueue = outputFrameQueue.lock();
+                    sharedQueue->clean();
+                    LOG_DEBUG("avcodec_receive_frame returned EOF, ending frame reception loop, frameQueue size: {}", sharedQueue->size());
+                }
+                
                 break;
             } else if (ret < 0) {
                 LOG_ERROR("Error receiving frame from decoder: {}", ret);
+                {
+                    QString reason = QStringLiteral("Error receiving frame from decoder");
+                    emit decodingError(reason);
+                    if (auto proc = m_eventProcessor.lock()) {
+                        QVariantHash data{{QStringLiteral("code"), QVariant(ret)}, {QStringLiteral("error"), QVariant(reason)}};
+                        proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+                    }
+                }
                 break;
-            } 
+            }
             lastRet = ret;
 
             // Convert frame to output format
             auto audio_frame = decodeFrame(frame);
             if (audio_frame) {
                 // Add to queue
-                std::unique_lock<std::mutex> lock(outputFrameQueue->mutex);
-                if (!destroying_.load()) {
-                    outputFrameQueue->frame_queue.push(audio_frame);
-                    outputFrameQueue->cond_var.notify_one();
+                if (outputFrameQueue.expired() == false) {
+                    auto sharedQueue = outputFrameQueue.lock();
+                    sharedQueue->enqueue(audio_frame);
+                    // LOG_DEBUG("Decoded and queued an audio frame with PTS {}", frame->pts);
+                } else {
+                    LOG_ERROR("Failed to push decoded frame to output queue - queue expired, PTS {}", frame->pts);
+                    if (auto proc = m_eventProcessor.lock()) {
+                        QVariantHash data{{QStringLiteral("error"), QVariant(QStringLiteral("Output frame queue expired"))}};
+                        proc->postEvent(AudioEventProcessor::DECODING_ERROR, data);
+                    }
+                    break;
                 }
             }
-            // LOG_DEBUG("Decoded and queued an audio frame with PTS {}", frame->pts);
         }
         av_packet_unref(packet);
     }
@@ -422,6 +523,7 @@ std::shared_ptr<AudioFrame> FFmpegStreamDecoder::decodeFrame(AVFrame* frame) {
     auto audio_frame = std::make_shared<AudioFrame>(buffer_size);
     audio_frame->sample_rate = audio_format_.sample_rate;
     audio_frame->channels = out_channels;
+    audio_frame->bits_per_sample = bytes_per_sample * 8;
     audio_frame->pts = frame->pts;
     
     // Convert audio
@@ -486,9 +588,9 @@ int FFmpegStreamDecoder::readPacket(void *opaque, uint8_t *buf, int buf_size)
         LOG_DEBUG("readPacket: Woke up, cache has {} bytes", decoder->audioCache.size());
     }
 
-    if (decoder->streamConsumptionFinished_.load()) {
-        LOG_DEBUG("readPacket: Stream consumption finished with {} bytes in cache", decoder->audioCache.size());
-    }
+    // if (decoder->streamConsumptionFinished_.load()) {
+    //     LOG_DEBUG("readPacket: Stream consumption finished with {} bytes in cache", decoder->audioCache.size());
+    // }
     
     // Check exit conditions
     if (decoder->destroying_.load() || !decoder->playing_.load()) {
@@ -512,7 +614,9 @@ int FFmpegStreamDecoder::readPacket(void *opaque, uint8_t *buf, int buf_size)
     
     size_t to_read = std::min(available, static_cast<size_t>(buf_size));
     decoder->audioCache.read(buf, to_read);
-    // LOG_DEBUG("readPacket: Provided {} bytes from audio cache({}) to FFmpeg", available, to_read);
+    // Notify producer that space is available
+    // LOG_DEBUG("readPacket: Provided {} bytes from audio cache({}) to FFmpeg", to_read, available - to_read);
+    decoder->decodeCondition.notify_all();
     return static_cast<int>(to_read);
 }
 
@@ -546,3 +650,4 @@ bool FFmpegStreamDecoder::setupCustomIO() {
     format_ctx_->pb = avio_ctx_;
     return true;
 }
+} // namespace audio

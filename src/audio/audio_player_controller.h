@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QObject>
-#include <QTimer>
+class QTimer;
 #include <QString>
 #include <QUuid>
 #include <QList>
@@ -12,19 +12,24 @@
 #include <thread>
 #include <condition_variable>
 #include <playlist/playlist.h>
+#include <util/safe_queue.hpp>
+#include "audio_frame.h"
+#include "audio_event_processor.h"
+#include "ffmpeg_decoder.h"
+#include "wasapi_audio_output.h"
 
 // Forward declarations
 class WASAPIAudioOutputUnsafe;
 class FFmpegStreamDecoder;
-struct AudioFrameQueue;
 namespace network { class NetworkManager; }
+
+namespace audio { 
+class AudioEventProcessor;
 
 enum class PlaybackState {
     Stopped = 0,
     Playing = 1,
-    Paused = 2,
-    Loading = 3,
-    Error = 4
+    Paused = 2
 };
 
 struct PlaybackStatus {
@@ -35,13 +40,11 @@ struct PlaybackStatus {
     qint64 currentPosition = 0;  // in milliseconds
     qint64 totalDuration = 0;    // in milliseconds
     playlist::PlayMode playMode = playlist::PlayMode::PlaylistLoop;
-    QString errorMessage;
 };
 
 class AudioPlayerController : public QObject
 {
     Q_OBJECT
-
 public:
     explicit AudioPlayerController(QObject *parent = nullptr);
     ~AudioPlayerController();
@@ -49,7 +52,7 @@ public:
     // Playlist control
     void playPlaylist(const QUuid& playlistId, int startIndex = 0);
     void playPlaylistFromSong(const QUuid& playlistId, const playlist::SongInfo& startSong);
-    void setCurrentPlaylist(const QUuid& playlistId);
+    // void setCurrentPlaylist(const QUuid& playlistId);
     void clearPlaylist();
 
     // Playback control
@@ -77,6 +80,7 @@ public:
 signals:
     // Playback state signals
     void playbackStateChanged(PlaybackState state);
+    void playbackCompleted();
     void currentSongChanged(const playlist::SongInfo& song, int index);
     void positionChanged(qint64 positionMs);
     void durationChanged(qint64 durationMs);
@@ -89,52 +93,55 @@ signals:
 
 private slots:
     void onPositionTimerTimeout();
-    void onAudioDecodingFinished();
-    void onAudioDecodingError(const QString& error);
 
 private:
-    // Core playback functions
-    void playCurrentSong();
-    void stopCurrentSong();
-    void loadNextSong();
-    void loadPreviousSong();
-    int getNextSongIndex();
-    int getPreviousSongIndex();
-    
-    // Private helpers that MUST be called with m_stateMutex held (unsafe)
-    void playCurrentSongUnsafe();
-    void stopCurrentSongUnsafe();
-    void clearPlaylistUnsafe();
+    void registerEventHandlers();
 
     // File and streaming management
     QString generateStreamingFilepath(const playlist::SongInfo& song) const;
     bool isLocalFileAvailable(const playlist::SongInfo& song) const;
-    // Streaming is acquired via NetworkManager in playCurrentSong()
-
-    // Utility functions
-    // void updatePlaybackStatus();
-    // void emitStatusSignals();
     void setupRandomGenerator();
+    void playCurrentSongUnsafe();
+    void cleanPlayResourcesUnsafe();
+    
 
+private: // Event handlers (serialized execution)
+    void onPlayEvent(const QVariantHash&);
+    void onPauseEvent(const QVariantHash&);
+    void onStopEvent(const QVariantHash&);
+    void onPlayFinishedEvent(const QVariantHash&);
+    void onPlayErrorEvent(const QVariantHash&);
+    void onInputStreamReadCompletedEvent(const QVariantHash&);
+    void onInputStreamReadErrorEvent(const QVariantHash&);
+    void onDecodingFinishedEvent(const QVariantHash&);
+    void onDecodingErrorEvent(const QVariantHash&);
+    void onFrameTransmissionFinishedEvent(const QVariantHash&);
+    void onFrameTransmissionErrorEvent(const QVariantHash&);
 private:
+    // Event system
+    std::shared_ptr<audio::AudioEventProcessor> m_eventProcessor;
+
     // Audio components
-    std::unique_ptr<WASAPIAudioOutputUnsafe> m_audioPlayer;
+    mutable std::mutex m_componentMutex;
+    std::shared_ptr<WASAPIAudioOutputUnsafe> m_audioOutput;
     std::unique_ptr<FFmpegStreamDecoder> m_decoder;
+    std::shared_ptr<std::istream> m_currentStream;
+
+    // Notice: This mutex is just used for lock the m_frameQueue pointer,
+    //  if u wanna access the frame queue content, pls use the mutex INSIDE AudioFrameQueue struct.
     std::shared_ptr<AudioFrameQueue> m_frameQueue;
     
     // Frame transmission thread (consumes frames from decoder and sends to audio output)
-    std::thread m_frameTransmissionThread;
+    std::shared_ptr<std::thread> m_frameTransmissionThread;
     std::atomic<bool> m_frameTransmissionActive;
     void frameTransmissionLoop();
-    
-    // Streaming components
-    std::shared_ptr<std::istream> m_currentStream;
 
     // Playlist data
+    // Thread safety: protect controller state with a standard mutex
+    mutable std::mutex m_stateMutex;
     QUuid m_currentPlaylistId;
     QList<playlist::SongInfo> m_currentPlaylist;
     int m_currentIndex;
-
     // Playback state
     PlaybackState m_currentState;
     playlist::PlayMode m_playMode;
@@ -142,18 +149,16 @@ private:
     qint64 m_totalDuration;
     float m_volume;
 
-    // Timers and threading
+    // Position Timer
     QTimer* m_positionTimer;
-    
+    std::shared_ptr<std::thread> m_playbackWatcherThread;
+    void playbackWatcherFunc();
+    std::atomic<bool> m_playbackWatcherExitFlag;
+
     // Random playback
     std::random_device m_randomDevice;
     std::mt19937 m_randomGenerator;
     QList<int> m_randomPlayOrder;
     int m_randomIndex;
-
-    // Thread safety: protect controller state with a standard mutex
-    mutable std::mutex m_stateMutex;
-
-    // Error handling
-    QString m_lastError;
 };
+}

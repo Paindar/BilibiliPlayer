@@ -1,14 +1,17 @@
 #include "application_context.h"
-#include "../playlist/playlist_manager.h"
-#include "../config/config_manager.h"
-#include "../network/network_manager.h"
-#include "../audio/audio_player_controller.h"
-#include "../log/log_manager.h"
 #include <QTimer>
 #include <QStandardPaths>
 #include <QDir>
 #include <QCoreApplication>
+#include <QThread>
 #include <chrono>
+
+#include <playlist/playlist_manager.h>
+#include <config/config_manager.h>
+#include <network/network_manager.h>
+#include <log/log_manager.h>
+#include <audio/audio_player_controller.h>
+#include <event/event_bus.hpp>
 
 ApplicationContext& ApplicationContext::instance()
 {
@@ -73,9 +76,8 @@ void ApplicationContext::initializePhase1(const QString& workspaceDir)
     // 1. ConfigManager first - needed by everyone
     initializeConfigManager(workspaceDir);
     
-    // 2. FileManager - depends on config for paths/settings (if needed)
-    // Note: FileManager functionality is now integrated into ConfigManager
-    
+    // 2. EventBus - core event system
+    initializeEventBus();
     m_currentPhase = 1;
     emit phaseInitialized(1);
     emit configLoaded();
@@ -119,6 +121,14 @@ void ApplicationContext::initializeConfigManager(const QString& workspaceDir)
     LOG_DEBUG("ConfigManager initialized and config loaded");
 }
 
+void ApplicationContext::initializeEventBus()
+{
+    LOG_DEBUG("Creating EventBus...");
+    // EventBus uses a factory Create() returning shared_ptr
+    m_eventBus = EventBus::Create();
+    LOG_DEBUG("EventBus initialized");
+}
+
 // FileManager functionality is now integrated into ConfigManager
 // No separate FileManager needed
 
@@ -158,7 +168,7 @@ void ApplicationContext::initializeAudioPlayerController()
     LOG_DEBUG("Creating AudioPlayerController...");
     
     // AudioPlayerController needs PlaylistManager and NetworkManager
-    m_audioPlayerController = std::make_unique<AudioPlayerController>(this);
+    m_audioPlayerController = std::make_unique<audio::AudioPlayerController>(this);
     
     LOG_DEBUG("AudioPlayerController initialized");
 }
@@ -198,6 +208,8 @@ void ApplicationContext::gracefulShutdown(int timeoutMs)
     }
     
     LOG_INFO("Starting graceful shutdown with timeout: {}ms", timeoutMs);
+    LOG_DEBUG("ApplicationContext::gracefulShutdown called on thread {} (main thread {})",
+              (void*)QThread::currentThread(), (void*)QCoreApplication::instance()->thread());
     emit shutdownStarted();
     
     // Use QTimer for timeout protection
@@ -304,5 +316,6 @@ void ApplicationContext::shutdown()
     }
     
     // Shutdown logging system last (after all other logging is complete)
+    LogManager::instance().flush();
     LogManager::instance().shutdown();
 }

@@ -12,6 +12,8 @@
 #include <condition_variable>
 #include <QObject>
 #include <queue>
+#include <util/safe_queue.hpp>
+#include "audio_frame.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -23,30 +25,8 @@ extern "C" {
 #include <libavutil/samplefmt.h>
 }
 
-struct AudioFrame {
-    std::vector<uint8_t> data;
-    int sample_rate;
-    int channels;
-    int64_t pts;
-    
-    AudioFrame(size_t size) : data(size) {}
-};
-
-// Audio format information extracted from decoded stream
-struct AudioFormat {
-    int sample_rate;
-    int channels;
-    int bits_per_sample;
-    
-    constexpr bool isValid() const { return sample_rate > 0 && channels > 0 && bits_per_sample > 0; }
-};
-
-struct AudioFrameQueue {
-    std::mutex mutex;
-    std::condition_variable cond_var;
-    std::queue<std::shared_ptr<AudioFrame>> frame_queue;
-};
-
+namespace audio {
+class AudioEventProcessor; // forward-declare to avoid heavy includes in this header
 /**
  * FFmpeg-based audio stream decoder, using custom AVIO context for stream reading.
  * Supports decoding from an input stream and provides (if needed) decoded audio frames.
@@ -56,7 +36,7 @@ struct AudioFrameQueue {
 class FFmpegStreamDecoder : public QObject{
     Q_OBJECT
 public:
-    explicit FFmpegStreamDecoder();
+    explicit FFmpegStreamDecoder(QObject* parent = nullptr);
     ~FFmpegStreamDecoder();
     
     /**
@@ -66,7 +46,7 @@ public:
      * @return true on success, false on failure
      */
     bool initialize(std::shared_ptr<std::istream> inputAudioStream, 
-        std::shared_ptr<AudioFrameQueue> outputFrameQueue);
+        std::weak_ptr<AudioFrameQueue> outputFrameQueue);
     
     /**
      * Start decoding process.
@@ -93,7 +73,18 @@ public:
     // bool seek(double position_seconds);
     // double getCurrentPosition() const;
 
+    // Attach an AudioEventProcessor via shared_ptr; stored as weak_ptr to avoid
+    // ownership cycles. The decoder will lock the weak_ptr when posting events.
+    void setEventProcessor(std::shared_ptr<AudioEventProcessor> processor);
+
 signals:
+    void readCompleted();
+    void readError(const QString& error);
+    void decodingFinished();
+    void decodingError(const QString& error);
+    void frameTransmissionDone();
+    void frameTransmissionError(const QString& error);
+    void playbackComplete();
 protected:
     /** 
      * Custom seek function for AVIO, only support AVSEEK_SIZE and
@@ -136,8 +127,11 @@ private:
     mutable std::condition_variable decodeCondition;
     mutable std::mutex audioCacheMutex;
     std::shared_ptr<std::istream> inputAudioStream;
-    std::shared_ptr<AudioFrameQueue> outputFrameQueue;
+    std::weak_ptr<AudioFrameQueue> outputFrameQueue;
     util::CircularBuffer<uint8_t> audioCache;
+
+    // Weak reference to the event processor (non-owning)
+    std::weak_ptr<AudioEventProcessor> m_eventProcessor;
 
     std::atomic<bool> playing_;
     std::atomic<bool> destroying_;
@@ -150,3 +144,4 @@ private:
     std::thread consumeAudioStreamThread;
     std::thread decodeAudioBytesThread;
 };
+} // namespace audio

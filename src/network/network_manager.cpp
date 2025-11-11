@@ -364,7 +364,10 @@ namespace network
                             std::lock_guard<std::mutex> lg(m_bgMutex);
                             auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
                                 [&cancel_token](const DownloadCancelEntry& e) { return e.token == cancel_token; });
-                            if (it != m_downloadCancelTokens.end()) m_downloadCancelTokens.erase(it);
+                            if (it != m_downloadCancelTokens.end()) {
+                                m_downloadCancelTokens.erase(it);
+                                LOG_INFO("Download canceled: {}", cancel_token->load());
+                            }
                         });
 
                         // Track watcher thread so we can join on shutdown
@@ -444,7 +447,7 @@ namespace network
         auto fut = std::async(std::launch::async, [this, keyword, maxResults, &cancelFlag]() -> QList<SearchResult> {
             try {
                 // Phase 1: searching by title
-                auto searchResults = m_biliInterface->searchByTitle(keyword.toStdString(), 1); // Blocking call
+                auto searchResults = m_biliInterface->searchByTitle(keyword.toStdString()); // Blocking call
                 // Phase 2: for each result, get additional page info
                 std::vector<std::future<QList<SearchResult>>> pageFutures;
                 std::mutex resultMutex;
