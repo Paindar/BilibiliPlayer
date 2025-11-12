@@ -28,6 +28,7 @@
 #include <manager/application_context.h>
 #include <playlist/playlist.h>
 #include <playlist/playlist_manager.h>
+#include <audio/audio_player_controller.h>
 
 MenuWidget::MenuWidget(QWidget *parent)
     : QWidget(parent)
@@ -162,7 +163,7 @@ void MenuWidget::updatePlaylist(const MenuPlaylistInfo& playlist)
 {
     QTreeWidgetItem* item = findPlaylistItem(playlist.id);
     if (item) {
-        item->setText(0, QString("%1 (%2 songs)").arg(playlist.name).arg(playlist.songCount));
+        item->setText(0, QString("%1").arg(playlist.name));
         item->setToolTip(0, playlist.description);
         // UUID remains unchanged at Qt::UserRole + 1
     }
@@ -380,6 +381,8 @@ void MenuWidget::updateCategories()
     }
     
     // Load all categories from the manager
+    QUuid currentPlaylistId = AUDIO_PLAYER_CONTROLLER->getCurrentPlaylistId();
+    LOG_DEBUG("Updating categories, current playlist ID: {}", currentPlaylistId.toString(QUuid::WithoutBraces).toStdString());
     int categoryCount = 0, playlistCount = 0;
     QList<playlist::CategoryInfo> categories = PLAYLIST_MANAGER->iterateCategories([](const playlist::CategoryInfo&) { return true; });
     for (const auto& categoryInfo : categories) {
@@ -408,6 +411,12 @@ void MenuWidget::updateCategories()
             QTreeWidgetItem* playlistItem = createPlaylistItem(menuPlaylist, playlistInfo.uuid);
             categoryItem->addChild(playlistItem);
             playlistCount++;
+            // LOG_DEBUG("Added playlist '{}'({}) to category '{}'", 
+            //           menuPlaylist.name.toStdString(), menuPlaylist.id.toStdString(), categoryInfo.name.toStdString());
+            // Expand if it contains the current playlist
+            if (currentPlaylistId == playlistInfo.uuid) {
+                categoryItem->setExpanded(true);
+            }
         }
         categoryCount++;
     }
@@ -493,7 +502,7 @@ void MenuWidget::addPlaylistToCategory(QTreeWidgetItem* categoryItem, const Menu
         .name = playlist.name,
         .creator = "",
         .description = playlist.description,
-        .coverUrl = "",
+        .coverUri = "",
         .uuid = QUuid::createUuid()
     };
     if (!PLAYLIST_MANAGER->addPlaylist(playlistInfo, categoryUuid)) {

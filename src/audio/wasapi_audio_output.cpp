@@ -7,9 +7,9 @@
 #include <chrono>
 
 WASAPIAudioOutputUnsafe::WASAPIAudioOutputUnsafe()
-    : device_enumerator_(nullptr), audio_device_(nullptr), audio_client_(nullptr), render_client_(nullptr),
-      wave_format_(nullptr), buffer_frame_count_(0), initialized_(false), is_playing_(false),
-      input_sample_rate_(0), input_channels_(0), input_bits_per_sample_(0) {}
+        : device_enumerator_(nullptr), audio_device_(nullptr), audio_client_(nullptr), render_client_(nullptr),
+            audio_clock_(nullptr), volume_control_(nullptr), wave_format_(nullptr), buffer_frame_count_(0), initialized_(false), is_playing_(false),
+            input_sample_rate_(0), input_channels_(0), input_bits_per_sample_(0) {}
 
 WASAPIAudioOutputUnsafe::~WASAPIAudioOutputUnsafe() {
     cleanup();
@@ -92,6 +92,22 @@ bool WASAPIAudioOutputUnsafe::initialize(int sample_rate, int channels, int bits
         return false;
     }
 
+    // Cache the audio clock for fast position queries
+    audio_clock_ = nullptr;
+    hr = audio_client_->GetService(__uuidof(IAudioClock), (void**)&audio_clock_);
+    if (FAILED(hr) || !audio_clock_) {
+        // Not fatal; position queries will simply return 0 if unavailable
+        audio_clock_ = nullptr;
+    }
+
+    // Cache the volume control for volume adjustment
+    volume_control_ = nullptr;
+    hr = audio_client_->GetService(__uuidof(ISimpleAudioVolume), (void**)&volume_control_);
+    if (FAILED(hr) || !volume_control_) {
+        // Not fatal; volume control will be unavailable
+        volume_control_ = nullptr;
+    }
+
     initialized_ = true;
     return true;
 }
@@ -124,6 +140,16 @@ void WASAPIAudioOutputUnsafe::cleanup()
     if (wave_format_) {
         CoTaskMemFree(wave_format_);
         wave_format_ = nullptr;
+    }
+
+    if (audio_clock_) {
+        audio_clock_->Release();
+        audio_clock_ = nullptr;
+    }
+
+    if (volume_control_) {
+        volume_control_->Release();
+        volume_control_ = nullptr;
     }
 
     CoUninitialize();
@@ -308,19 +334,40 @@ int WASAPIAudioOutputUnsafe::getCurrentFrames() const
     return 0;
 }
 
+int64_t WASAPIAudioOutputUnsafe::getCurrentPositionMs() const
+{
+    if (!audio_client_ || !initialized_) {
+        return 0;
+    }
+
+    if (!audio_clock_) return 0;
+
+    UINT64 freq = 0;
+    UINT64 pos = 0;
+    HRESULT hr = audio_clock_->GetFrequency(&freq);
+    if (FAILED(hr) || freq == 0) {
+        return 0;
+    }
+
+    hr = audio_clock_->GetPosition(&pos, nullptr);
+    if (FAILED(hr)) {
+        return 0;
+    }
+
+    double seconds = static_cast<double>(pos) / static_cast<double>(freq);
+    int64_t ms = static_cast<int64_t>(seconds * 1000.0);
+    return ms;
+}
+
 void WASAPIAudioOutputUnsafe::setVolume(float volume)
 {
-    if (!initialized_) return;
+    if (!initialized_ || !volume_control_) return;
 
     // Clamp volume between 0.0 and 1.0
-    if (volume < 0.0f) volume = 0.0f;
-    if (volume > 1.0f) volume = 1.0f;
+    volume = std::clamp(volume, 0.0f, 1.0f);
 
-    // Set volume on the audio client
-    // if (audio_client_) {
-    //     HRESULT hr = audio_client_->SetMasterVolume(volume, nullptr);
-    //     if (FAILED(hr)) {
-    //         LOG_ERROR("WASAPI: Failed to set volume: 0x{:X}", static_cast<unsigned long>(hr));
-    //     }
-    // }
+    HRESULT hr = volume_control_->SetMasterVolume(volume, nullptr);
+    if (FAILED(hr)) {
+        LOG_ERROR("WASAPI: Failed to set volume: 0x{:X}", static_cast<unsigned long>(hr));
+    }
 }

@@ -97,6 +97,7 @@ private:
     
     // Helper methods
     QUuid getPlaylistCategoryId(const QUuid& playlistId) const;
+    QString generateStreamingFilepath(const playlist::SongInfo& song) const;
     
     // Default setup helpers
     QUuid ensureDefaultSetup();

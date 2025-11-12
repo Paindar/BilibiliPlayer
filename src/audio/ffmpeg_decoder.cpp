@@ -312,11 +312,11 @@ void FFmpegStreamDecoder::consumeAudioStreamFunc()
         size_t toWrite = std::min(audioCache.capacity() - audioCache.size(), sizeof(buffer));
         if (toWrite == 0) {
             // Buffer full, wait until space is available
-            LOG_DEBUG("Audio cache full ({} bytes), waiting for space to become available.", audioCache.size());
+            // LOG_DEBUG("Audio cache full ({} bytes), waiting for space to become available.", audioCache.size());
             decodeCondition.wait(lock, [this]() {
                 return audioCache.size() < audioCache.capacity() || destroying_.load();
             });
-            LOG_DEBUG("Audio cache has space available ({} bytes), resuming consumption.", audioCache.size());
+            // LOG_DEBUG("Audio cache has space available ({} bytes), resuming consumption.", audioCache.size());
             continue;
         }
         // Possible situation: stream has less data than requested,

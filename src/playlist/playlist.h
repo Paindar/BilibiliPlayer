@@ -16,8 +16,9 @@ namespace playlist
         QString title;
         QString uploader; // Artist or uploader name
         int platform; // Boxing for network::SupportInterface enum, may support more interface types later
-        QString duration;
+        int duration;
         QString filepath;
+        QString coverName;
         QString args; // Additional arguments or metadata for interface
         bool operator==(const SongInfo& other) const {
             return title == other.title &&
@@ -30,7 +31,7 @@ namespace playlist
         QString name;
         QString creator;
         QString description;
-        QString coverUrl;
+        QString coverUri;
         QUuid uuid; // Unique identifier for the playlist
         bool operator==(const PlaylistInfo& other) const {
             return uuid == other.uuid;

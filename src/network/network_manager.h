@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <stream/realtime_pipe.hpp>
 #include "bili_network_interface.h"
 
@@ -24,7 +25,7 @@ namespace network
         QString title;
         QString uploader;
         SupportInterface platform;
-        QString duration;
+        int duration;
         QString coverUrl;
         QString description;
 
@@ -54,8 +55,8 @@ namespace network
         void cancelAllSearches();
         // Convenience: get size by interface params (e.g., bvid/cid) instead of direct URL
         std::future<uint64_t> getStreamSizeByParamsAsync(SupportInterface platform, const QString& params);
-        std::future<std::shared_ptr<std::istream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
-        std::future<void> downloadAsync(SupportInterface platform, const QString& url, const QString& filepath);
+        std::shared_future<std::shared_ptr<std::istream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
+        std::shared_future<void> downloadAsync(SupportInterface platform, const QString& url, const QString& filepath);
         
         void setRequestTimeout(int timeoutMs) { m_requestTimeout = timeoutMs; }
         int getRequestTimeout() const { return m_requestTimeout; }
@@ -64,7 +65,8 @@ namespace network
         void searchCompleted(const QString& keyword);
         void searchFailed(const QString& keyword, const QString& errorMessage);
         void searchProgress(const QString& keyword, const QList<SearchResult>& results);
-        
+        void downloadCompleted(const QString& url, const QString& filepath);
+        void downloadFailed(const QString& url, const QString& filepath, const QString& errorMessage);
     private:
         
         NetworkManager(const NetworkManager&) = delete;
@@ -76,15 +78,13 @@ namespace network
         
         // Helper methods
         std::future<void> monitorSearchFuturesWithCV(const QString& keyword, std::vector<std::future<void>>&& futures);
-        QString Seconds2HMS(int totalSeconds);
+        std::string Seconds2HMS(int totalSeconds);
         bool cancelDownload(const std::shared_ptr<std::atomic<bool>>& token);
         bool checkPlatformStatus(SupportInterface platform);
     
     private:    
         std::unique_ptr<BilibiliNetworkInterface> m_biliInterface;
         std::atomic<bool> m_cancelFlag;
-        std::mutex m_completionMutex;
-        std::condition_variable m_completionCV;
         int m_requestTimeout = 10000; // 10 seconds
         bool m_configured = false;
         // Background thread management for streaming/watchers
@@ -95,6 +95,21 @@ namespace network
             std::shared_ptr<RealtimePipe> buffer;
         };
         std::vector<DownloadCancelEntry> m_downloadCancelTokens;
+        
+        // Prevent duplicated downloads
+        struct ActiveDownload {
+            std::shared_ptr<std::promise<void>> promise;
+            std::shared_future<void> future;
+        };
+        std::unordered_map<QString, ActiveDownload> m_activeDownloads;
+        
+        struct ActiveStream {
+            std::shared_ptr<std::promise<std::shared_ptr<std::istream>>> promise;
+            std::shared_future<std::shared_ptr<std::istream>> future;
+        };
+        std::unordered_map<QString, ActiveStream> m_activeStreams;
+        mutable std::mutex m_downloadMapMutex;
+        
         // Cancel a specific download by token: sets the token and notifies/destroys the
         // associated buffer so any blocked readers/writers wake. Returns true if an
         // entry was found and cancelled.

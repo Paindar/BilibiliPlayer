@@ -154,21 +154,6 @@
               </widget>
              </item>
              <item>
-              <widget class="QLabel" name="totalDurationLabel">
-               <property name="font">
-                <font>
-                 <pointsize>10</pointsize>
-                </font>
-               </property>
-               <property name="styleSheet">
-                <string>QLabel { color: #666; }</string>
-               </property>
-               <property name="text">
-                <string>Total: 00:00:00</string>
-               </property>
-              </widget>
-             </item>
-             <item>
               <widget class="QLabel" name="descriptionLabel">
                <property name="font">
                 <font>

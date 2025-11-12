@@ -12,7 +12,11 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-
+#include <QPixmap>
+#include <QIcon>
+#include <QPushButton>
+#include <QSlider>
+#include "player_status_bar.h"
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -52,6 +56,10 @@ void MainWindow::setupCustomComponents()
     m_menuWidget = new MenuWidget(this);
     connect(m_menuWidget, &MenuWidget::menuItemSelected, this, &MainWindow::onMenuItemSelected);
     ui->menuContainerLayout->addWidget(m_menuWidget);
+
+    // Add player status bar widget (loaded from separate UI wrapper)
+    auto* status = new PlayerStatusBar(this);
+    if (ui->statusBarPlaceholderLayout) ui->statusBarPlaceholderLayout->addWidget(status);
 }
 
 void MainWindow::setupNavigator()
@@ -85,7 +93,20 @@ void MainWindow::setupNavigator()
     });
 
     connect(m_navigator, &Navigator::afterPageChange, this, &MainWindow::onPageChanged);
-    m_navigator->navigateTo(PlaylistPage::PLAYLIST_PAGE_TYPE);
+    if (AUDIO_PLAYER_CONTROLLER) {
+        auto currentUuid = AUDIO_PLAYER_CONTROLLER->getCurrentPlaylistId();
+        int currentIndex = AUDIO_PLAYER_CONTROLLER->getCurrentAudioIndex();
+        if (!currentUuid.isNull()) {
+            m_navigator->navigateTo(PlaylistPage::PLAYLIST_PAGE_TYPE, 
+                QString("playlistId=%0&startIndex=%1")
+                .arg(currentUuid.toString(QUuid::WithoutBraces))
+                .arg(currentIndex));
+        } else {
+            m_navigator->navigateTo(SearchPage::SEARCH_PAGE_TYPE);
+        }
+    } else {
+        m_navigator->navigateTo(SearchPage::SEARCH_PAGE_TYPE);
+    }
 }
 
 void MainWindow::onMinimizeClicked()

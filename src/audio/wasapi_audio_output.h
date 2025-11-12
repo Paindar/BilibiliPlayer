@@ -6,6 +6,7 @@
 #include <atomic>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <windows.h>
 
 
@@ -28,6 +29,8 @@ public:
     bool isPlaying() const;
     int getAvailableFrames() const;  // Get number of frames available in buffer
     int getCurrentFrames() const;
+    // Get current playback position in milliseconds according to the audio device clock
+    int64_t getCurrentPositionMs() const;
     void setVolume(float volume); // Volume: 0.0 - 1.0
 private:
     // WASAPI COM interfaces
@@ -35,6 +38,8 @@ private:
     IMMDevice* audio_device_;
     IAudioClient* audio_client_;
     IAudioRenderClient* render_client_;
+    IAudioClock* audio_clock_;
+    ISimpleAudioVolume* volume_control_;
     WAVEFORMATEX* wave_format_;
     
     // Audio buffer management

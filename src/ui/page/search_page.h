@@ -2,6 +2,9 @@
 
 #include <QWidget>
 #include <QString>
+#include <QLabel>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <navigator/i_navigable_page.h>
 #include <network/network_manager.h>
 
@@ -9,6 +12,27 @@ QT_BEGIN_NAMESPACE
 class Ui_SearchPage;
 class QListWidgetItem;
 QT_END_NAMESPACE
+
+// Custom widget for search result item display
+class SearchResultItemWidget : public QWidget
+{
+    Q_OBJECT
+    
+public:
+    explicit SearchResultItemWidget(const network::SearchResult& result, QWidget* parent = nullptr);
+    ~SearchResultItemWidget() = default;
+    
+    void setCoverImage(const QPixmap& pixmap);
+    void updateResult(const network::SearchResult& result);
+    
+private:
+    QLabel* m_coverLabel;
+    QLabel* m_titleLabel;
+    QLabel* m_uploaderLabel;
+    QLabel* m_platformLabel;
+    QLabel* m_descriptionLabel;
+    network::SearchResult m_result;
+};
 
 
 class SearchPage : public QWidget, public INavigablePage

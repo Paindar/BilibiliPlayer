@@ -7,6 +7,8 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <QTime>
+#include <QMenu>
+#include <QAction>
 #include <manager/application_context.h>
 
 const QString PlaylistPage::PLAYLIST_PAGE_TYPE = "playlist";
@@ -20,11 +22,16 @@ PlaylistPage::PlaylistPage(QWidget *parent)
     ui->setupUi(this);
     setupUI();
     
+    // Enable context menu
+    ui->songListView->setContextMenuPolicy(Qt::CustomContextMenu);
+    
     // Connect signals
     connect(ui->songListView, &QTreeWidget::itemDoubleClicked, 
             this, &PlaylistPage::onSongDoubleClicked);
     connect(ui->songListView, &QTreeWidget::itemSelectionChanged,
             this, &PlaylistPage::onSelectionChanged);
+    connect(ui->songListView, &QTreeWidget::customContextMenuRequested,
+            this, &PlaylistPage::showContextMenu);
 
     SetupPlaylistManager();
 }
@@ -53,7 +60,6 @@ void PlaylistPage::setupUI()
     ui->creatorLabel->setText("");
     ui->songCountLabel->setText("0 songs");
     ui->descriptionLabel->setText("");
-    ui->totalDurationLabel->setText("Total: 00:00");
     ui->coverLabel->setText("No Cover");
 }
 
@@ -119,7 +125,6 @@ void PlaylistPage::refreshPlaylist()
         ui->creatorLabel->setText("");
         ui->songCountLabel->setText("0 songs");
         ui->descriptionLabel->setText("");
-        ui->totalDurationLabel->setText("Total: 00:00");
         ui->coverLabel->setText("No Cover");
         ui->songListView->clear();
         return;
@@ -132,7 +137,6 @@ void PlaylistPage::refreshPlaylist()
         ui->creatorLabel->setText("");
         ui->songCountLabel->setText("0 songs");
         ui->descriptionLabel->setText("");
-        ui->totalDurationLabel->setText("Total: 00:00");
         ui->coverLabel->setText("No Cover");
         ui->songListView->clear();
         return;
@@ -226,26 +230,19 @@ void PlaylistPage::updatePlaylistInfo()
     ui->songCountLabel->setText(QString("%1 songs").arg(songs.size()));
     ui->descriptionLabel->setText(playlistInfo->description);
     
-    // Calculate total duration
-    int totalSeconds = 0;
-    for (const auto& song : songs) {
-        // Parse duration string (assuming format like "3:45" or "1:23:45")
-        QStringList parts = song.duration.split(':');
-        if (parts.size() == 2) {
-            // MM:SS format
-            totalSeconds += parts[0].toInt() * 60 + parts[1].toInt();
-        } else if (parts.size() == 3) {
-            // HH:MM:SS format
-            totalSeconds += parts[0].toInt() * 3600 + parts[1].toInt() * 60 + parts[2].toInt();
-        }
-    }
-    
-    ui->totalDurationLabel->setText(QString("Total: %1").arg(formatDuration(totalSeconds)));
-    
     // Set cover image (placeholder for now)
-    if (!playlistInfo->coverUrl.isEmpty()) {
+    if (!playlistInfo->coverUri.isEmpty()) {
         // In a real implementation, you would load the image asynchronously
-        ui->coverLabel->setText("Loading...");
+        if (QFile::exists(playlistInfo->coverUri)) {
+            QPixmap pix(playlistInfo->coverUri);
+            LOG_DEBUG("Loading cover image from local path: {}", playlistInfo->coverUri.toStdString());
+            if (!pix.isNull()) 
+                ui->coverLabel->setPixmap(pix.scaled(150,150, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            ui->coverLabel->setText("Loading...");
+            m_currentCoverPath = playlistInfo->coverUri;
+            LOG_DEBUG("Requesting cover image download from {}", playlistInfo->coverUri.toStdString());
+        }
     } else {
         ui->coverLabel->setText("No Cover");
     }
@@ -289,7 +286,7 @@ QTreeWidgetItem* PlaylistPage::createSongItem(const playlist::SongInfo& song)
         default: platformStr = "Unknown"; break;
     }
     item->setText(2, platformStr);
-    item->setText(3, song.duration);
+    item->setText(3, formatDuration(song.duration/1000)); // Convert ms to seconds
     
     // Store song data for retrieval
     item->setData(0, Qt::UserRole, QVariant::fromValue(song));
@@ -331,6 +328,18 @@ void PlaylistPage::onSelectionChanged()
     emit songsSelected(selectedSongs);
 }
 
+void PlaylistPage::onNetworkDownload(QString url, QString savePath)
+{
+    if (savePath == m_currentCoverPath) {
+        if (ui->coverLabel) {
+            QPixmap pix(savePath);
+            LOG_DEBUG("Cover image downloaded, updating UI from {}", savePath.toStdString());
+            if (!pix.isNull()) 
+                ui->coverLabel->setPixmap(pix.scaled(150,150, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    }
+}
+
 QString PlaylistPage::getNavigationState() const
 {
     QUrlQuery query;
@@ -350,4 +359,46 @@ void PlaylistPage::restoreFromState(const QString& state)
             setCurrentPlaylist(playlistId);
         }
     }
+}
+
+void PlaylistPage::showContextMenu(const QPoint& pos)
+{
+    QTreeWidgetItem* item = ui->songListView->itemAt(pos);
+    if (!item) {
+        return; // No item at this position
+    }
+    
+    QMenu contextMenu(this);
+    
+    QAction* deleteAction = contextMenu.addAction("Delete");
+    connect(deleteAction, &QAction::triggered, this, &PlaylistPage::deleteSong);
+    
+    contextMenu.exec(ui->songListView->mapToGlobal(pos));
+}
+
+void PlaylistPage::deleteSong()
+{
+    QList<QTreeWidgetItem*> selectedItems = ui->songListView->selectedItems();
+    if (selectedItems.isEmpty()) {
+        LOG_WARN("No song selected for deletion");
+        return;
+    }
+    
+    if (!m_playlistManager || m_currentPlaylistId.isNull()) {
+        LOG_ERROR("Cannot delete song: no playlist manager or current playlist");
+        return;
+    }
+    
+    // Delete all selected songs
+    for (QTreeWidgetItem* item : selectedItems) {
+        playlist::SongInfo song = item->data(0, Qt::UserRole).value<playlist::SongInfo>();
+        
+        if (m_playlistManager->removeSongFromPlaylist(song, m_currentPlaylistId)) {
+            LOG_DEBUG("Deleted song '{}' from playlist", song.title.toStdString());
+        } else {
+            LOG_ERROR("Failed to delete song '{}' from playlist", song.title.toStdString());
+        }
+    }
+    
+    emit playlistModified();
 }

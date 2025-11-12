@@ -554,6 +554,58 @@ void ConfigManager::setAutoSaveInterval(int intervalMinutes)
     LOG_INFO("Auto-save interval changed to: {} minutes", intervalMinutes);
 }
 
+int ConfigManager::getVolumeLevel() const
+{
+    return m_settings ? m_settings->value("audio/volume_level", 50).toInt() : 50;
+}
+
+void ConfigManager::setVolumeLevel(int level)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("audio/volume_level", level);
+    LOG_INFO("Volume level changed to: {}", level);
+}
+
+int ConfigManager::getPlayMode() const
+{
+    return m_settings ? m_settings->value("audio/play_mode", 0).toInt() : 0;
+}
+
+void ConfigManager::setPlayMode(int mode)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("audio/play_mode", mode);
+    LOG_INFO("Play mode changed to: {}", mode);
+}
+
+QString ConfigManager::getCurrentPlaylistId() const
+{
+    return m_settings ? m_settings->value("audio/current_playlist_id", "").toString() : "";
+}
+
+void ConfigManager::setCurrentPlaylistId(const QString& playlistId)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("audio/current_playlist_id", playlistId);
+    LOG_INFO("Current playlist ID changed to: {}", playlistId.toStdString());
+}
+
+int ConfigManager::getCurrentAudioIndex() const
+{
+    return m_settings ? m_settings->value("audio/current_audio_index", 0).toInt() : 0;
+}
+
+void ConfigManager::setCurrentAudioIndex(int index)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("audio/current_audio_index", index);
+    LOG_INFO("Current audio index changed to: {}", index);
+}
+
 // Error logging
 void ConfigManager::logNetworkError(const QString& error)
 {

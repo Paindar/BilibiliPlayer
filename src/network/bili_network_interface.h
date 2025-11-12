@@ -19,6 +19,7 @@ namespace network
         std::string bvid;
         std::string author;
         std::string description;
+        std::string coverImg;
     };
 
     struct BilibiliPageInfo {
@@ -26,10 +27,19 @@ namespace network
         int page; // page number
         std::string part; // part title
         int duration; // duration in seconds
-        std::string first_frame; // page cover
+        std::string firstFrame; // page cover
     };
 
-    
+    struct BilibiliSearchResult {
+        std::string title;
+        std::string bvid;
+        std::string author;
+        std::string description;
+        std::string cover;
+        int64_t cid;
+        std::string partTitle;
+        int duration;
+    };
 
     class BilibiliNetworkInterface 
     {
@@ -46,12 +56,9 @@ namespace network
         bool setPlatformDirectory(const std::string& platform_dir);
         void setTimeout(int timeout_sec);
         void setUserAgent(const std::string& user_agent);
-
-        // Bilibili API
-        [[deprecated]] std::vector<BilibiliPageInfo> getPagesCid(const std::string& bvid);
     public: // interface implement
-        // Search videos by title
-        std::vector<BilibiliVideoInfo> searchByTitle(const std::string& title, int page = 1);
+        // Search videos by title and get page info (non-blocking, returns combined results)
+        std::vector<BilibiliSearchResult> searchByTitle(const std::string& title, int page = 1);
         // Get audio URL by interface parameters (e.g., bvid/cid)
         std::string getAudioUrlByParams(const std::string& params);
         // Get stream size by URL
@@ -70,11 +77,11 @@ namespace network
     size_t test_pool_size(const std::string& host) const;
     // Run concurrent borrow/return operations across threads; returns true if no exceptions
     bool test_concurrent_borrow_return(const std::string& host, size_t thread_count, size_t iter_count);
-        // Cookie test helpers
-        // Parse a single Set-Cookie header (as received from origin_host) and add to the jar
-        void test_add_cookie_from_set_cookie(const std::string& set_cookie_line, const std::string& origin_host);
-        // Build headers for a full URL (scheme+host+path) for testing cookie selection
-        httplib::Headers test_get_headers_for_url(const std::string& url);
+    // Cookie test helpers
+    // Parse a single Set-Cookie header (as received from origin_host) and add to the jar
+    void test_add_cookie_from_set_cookie(const std::string& set_cookie_line, const std::string& origin_host);
+    // Build headers for a full URL (scheme+host+path) for testing cookie selection
+    httplib::Headers test_get_headers_for_url(const std::string& url);
 #endif
     private: // Struct
         struct BiliWbiKeys {
@@ -122,6 +129,8 @@ namespace network
         bool saveWbiKeys_unsafe(Json::Value& jsonObj) const;
         // Utility methods
         bool parseUrl(const std::string& url, std::string& host, std::string& path) const;
+        std::vector<BilibiliPageInfo> getPagesCid(const std::string& bvid);
+        std::vector<BilibiliVideoInfo> searchByTitleOld(const std::string& title, int page = 1);
     private:
         // HTTP client instance
         mutable std::mutex m_clientMutex_;

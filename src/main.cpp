@@ -4,11 +4,14 @@
 #include <QLocale>
 #include <QTranslator>
 #include <QTimer>
-#include "manager/application_context.h"
+#include <QImageReader>
+#include <manager/application_context.h>
 #include <exception>
 #include <csignal>
 #include <iostream>
+#include <log/log_manager.h>
 #ifdef _WIN32
+#include <winsock2.h>
 #include <windows.h>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
@@ -78,6 +81,14 @@ int main(int argc, char *argv[])
     try {
         // Initialize with default workspace directory
         APP_CONTEXT.initialize();
+        
+        // Log supported image formats
+        QList<QByteArray> formats = QImageReader::supportedImageFormats();
+        QString formatList;
+        for (const QByteArray& fmt : formats) {
+            formatList += QString::fromUtf8(fmt) + " ";
+        }
+        LOG_INFO("Qt supported image formats: {}", formatList.trimmed().toStdString());
     } catch (const std::exception& e) {
         qCritical() << "Initialization failed:" << e.what();
         QApplication::quit();

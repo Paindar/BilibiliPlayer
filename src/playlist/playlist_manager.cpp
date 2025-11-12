@@ -1,6 +1,6 @@
 #include "playlist_manager.h"
-#include "../config/config_manager.h"
-#include "../log/log_manager.h"
+#include <config/config_manager.h>
+#include <log/log_manager.h>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -10,6 +10,9 @@
 #include <optional>
 #include <functional>
 #include <fmt/format.h>
+#include <manager/application_context.h>
+#include <audio/audio_player_controller.h>
+#include <util/md5.h>
 
 PlaylistManager::PlaylistManager(ConfigManager* configManager, QObject* parent)
     : QObject(parent)
@@ -381,8 +384,10 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
         LOG_ERROR("Playlist with UUID {} not found", playlistId.toString().toStdString());
         return false;
     }
+    playlist::SongInfo songWithFilepath = song;
+    songWithFilepath.filepath = generateStreamingFilepath(songWithFilepath);
     
-    m_playlistSongs[playlistId].append(song);
+    m_playlistSongs[playlistId].append(songWithFilepath);
     auto playlistIt = m_playlists.find(playlistId);
     QString playlistName = (playlistIt != m_playlists.end()) ? playlistIt.value().name : "Unknown";
     locker.unlock();
@@ -395,6 +400,11 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
              song.title.toStdString(), 
              playlistName.toStdString(), 
              playlistId.toString().toStdString());
+    if (AUDIO_PLAYER_CONTROLLER) {
+        if (!AUDIO_PLAYER_CONTROLLER->isPlaying()) {
+            AUDIO_PLAYER_CONTROLLER->playPlaylistFromSong(playlistId, song);
+        }
+    }
     return true;
 }
 
@@ -458,6 +468,9 @@ bool PlaylistManager::updateSongInPlaylist(const playlist::SongInfo& song, const
     
     if (it != songs.end()) {
         *it = song;
+        if (it->filepath.isEmpty()) {
+            it->filepath = generateStreamingFilepath(*it);
+        }
         auto playlistIt = m_playlists.find(playlistId);
         locker.unlock();
         
@@ -653,7 +666,7 @@ bool PlaylistManager::saveCategoriesToJsonFile()
                 playlistObj["name"] = playlist.name;
                 playlistObj["creator"] = playlist.creator;
                 playlistObj["description"] = playlist.description;
-                playlistObj["coverUrl"] = playlist.coverUrl;
+                playlistObj["coverUri"] = playlist.coverUri;
                 
                 // Get songs for this playlist
                 QJsonArray songsArray;
@@ -665,6 +678,7 @@ bool PlaylistManager::saveCategoriesToJsonFile()
                     songObj["platform"] = song.platform;
                     songObj["duration"] = song.duration;
                     songObj["filepath"] = song.filepath;
+                    songObj["coverName"] = song.coverName;
                     songObj["args"] = song.args;
                     songsArray.append(songObj);
                 }
@@ -758,7 +772,7 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
                 playlist.name = playlistObj["name"].toString();
                 playlist.creator = playlistObj["creator"].toString();
                 playlist.description = playlistObj["description"].toString();
-                playlist.coverUrl = playlistObj["coverUrl"].toString();
+                playlist.coverUri = playlistObj["coverUri"].toString();
                 
                 // Add playlist
                 m_playlists.insert(playlist.uuid, playlist);
@@ -774,8 +788,9 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
                     song.title = songObj["title"].toString();
                     song.uploader = songObj["uploader"].toString();
                     song.platform = songObj["platform"].toInt();
-                    song.duration = songObj["duration"].toString();
+                    song.duration = songObj["duration"].toInt();
                     song.filepath = songObj["filepath"].toString();
+                    song.coverName = songObj["coverName"].toString();
                     song.args = songObj["args"].toString();
                     
                     songs.append(song);
@@ -792,6 +807,37 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
     LOG_INFO("Loaded {} categories with {} playlists from {}", 
              m_categories.size(), m_playlists.size(), fullPath.toStdString());
     return true;
+}
+
+QString PlaylistManager::generateStreamingFilepath(const playlist::SongInfo& song) const
+{
+    // Generate filepath using only platform and args hash for safety and uniqueness
+    // song.platform is not an enum type directly; cast it to the actual enum used by NetworkManager
+    QString platformStr = QString::number(static_cast<int>(song.platform));
+    
+    // Create a comprehensive hash from multiple song properties for uniqueness
+    std::string titleHash = util::md5Hash(song.title.toStdString()),
+                uploaderHash = util::md5Hash(song.uploader.toStdString()),
+                argsHash = util::md5Hash(song.args.toStdString());
+    std::string mixedStr = fmt::format("{}{}{}", titleHash, uploaderHash, argsHash);
+    std::string result = util::md5Hash(mixedStr);
+    
+    // Safe filename format: "platform_hash.audio"
+    QString filename = QString("%1_%2.audio").arg(platformStr).arg(QString::fromStdString(result));
+    
+    // Get configured audio cache directory from ConfigManager if available,
+    // otherwise use a local ./tmp directory relative to the executable/current working dir.
+    QString cacheDir;
+    if (CONFIG_MANAGER) {
+        cacheDir = CONFIG_MANAGER->getAudioCacheDirectory();
+    } else {
+        cacheDir = QDir::cleanPath(QDir::currentPath() + "/tmp");
+    }
+
+    // Ensure directory exists
+    QDir().mkpath(cacheDir);
+
+    return QDir(cacheDir).filePath(filename);
 }
 
 // Default setup helpers
@@ -818,7 +864,7 @@ QUuid PlaylistManager::ensureDefaultSetup()
         favoritePlaylist.name = "Favorite Playlist";
         favoritePlaylist.creator = "System";
         favoritePlaylist.description = "Your favorite songs collection";
-        favoritePlaylist.coverUrl = "";
+        favoritePlaylist.coverUri = "";
         favoritePlaylist.uuid = QUuid::createUuid();
         
         m_playlists.insert(favoritePlaylist.uuid, favoritePlaylist);

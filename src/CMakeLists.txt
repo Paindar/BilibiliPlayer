@@ -13,6 +13,9 @@ set(PROJECT_SOURCES
     ui/menu_widget.cpp
     ui/menu_widget.h
     ui/menu_widget.ui
+    ui/player_status_bar.cpp
+    ui/player_status_bar.h
+    ui/player_status_bar.ui
 
     # UI navigation components
     ui/navigator/i_navigable_page.h
@@ -45,6 +48,7 @@ set(PROJECT_SOURCES
     audio/wasapi_audio_output.cpp
     audio/wasapi_audio_output.h
     audio/audio_player_controller.cpp
+    audio/audio_player_controller_callback.cpp
     audio/audio_player_controller.h
     audio/audio_event_processor.cpp
     audio/audio_event_processor.h

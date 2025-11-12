@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PlayerStatusBar</class>
+ <widget class="QWidget" name="PlayerStatusBar">
+    <property name="minimumSize">
+     <size>
+        <width>0</width>
+        <height>80</height>
+     </size>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <property name="leftMargin"><number>10</number></property>
+     <property name="topMargin"><number>8</number></property>
+     <property name="rightMargin"><number>10</number></property>
+     <property name="bottomMargin"><number>8</number></property>
+     <item>
+        <widget class="QWidget" name="statusLeft">
+         <layout class="QHBoxLayout" name="statusLeftLayout">
+            <item>
+             <widget class="QLabel" name="coverLabel">
+                <property name="minimumSize"><size><width>64</width><height>64</height></size></property>
+                <property name="maximumSize"><size><width>64</width><height>64</height></size></property>
+                <property name="styleSheet"><string notr="true">QLabel#coverLabel { background-color: #3a3a3a; border-radius: 4px; }</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QWidget" name="trackInfo">
+                <layout class="QVBoxLayout" name="trackInfoLayout">
+                 <item>
+                    <widget class="QLabel" name="trackTitleLabel">
+                     <property name="styleSheet"><string notr="true">QLabel { color: #ffffff; font-weight: bold; }</string></property>
+                     <property name="text"><string>Track Title</string></property>
+                    </widget>
+                 </item>
+                 <item>
+                    <widget class="QLabel" name="uploaderLabel">
+                     <property name="styleSheet"><string notr="true">QLabel { color: #cccccc; font-size: 12px; }</string></property>
+                     <property name="text"><string>Uploader Name</string></property>
+                    </widget>
+                 </item>
+                </layout>
+             </widget>
+            </item>
+         </layout>
+        </widget>
+     </item>
+     <item>
+        <spacer name="leftExpander">
+         <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+         <property name="sizeHint">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+         </property>
+        </spacer>
+     </item>
+     <item>
+        <widget class="QWidget" name="statusCenter">
+         <layout class="QVBoxLayout" name="statusCenterLayout">
+            <item>
+             <widget class="QSlider" name="progressSlider"><property name="orientation"><enum>Qt::Horizontal</enum></property></widget>
+            </item>
+            <item>
+             <widget class="QWidget" name="controlRow">
+                <layout class="QHBoxLayout" name="controlRowLayout">
+                 <item><widget class="QPushButton" name="btnPrev"><property name="text"><string>Prev</string></property></widget></item>
+                 <item><widget class="QPushButton" name="btnPlayPause"><property name="text"><string>Play</string></property></widget></item>
+                 <item><widget class="QPushButton" name="btnNext"><property name="text"><string>Next</string></property></widget></item>
+                 <item><widget class="QPushButton" name="btnPlayMode"><property name="text"><string>Mode</string></property></widget></item>
+                 <item><spacer name="controlSpacer"><property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property></spacer></item>
+                </layout>
+             </widget>
+            </item>
+         </layout>
+        </widget>
+     </item>
+     <item>
+        <spacer name="rightExpander">
+         <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+         <property name="sizeHint">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+         </property>
+        </spacer>
+     </item>
+     <item>
+        <widget class="QWidget" name="statusRight">
+         <layout class="QHBoxLayout" name="statusRightLayout">
+            <item><spacer name="rightSpacer"><property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property></spacer></item>
+            <item>
+             <widget class="QSlider" name="volumeSlider"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property><property name="value"><number>80</number></property></widget>
+            </item>
+            <item><widget class="QPushButton" name="btnMute"><property name="text"><string>Mute</string></property></widget></item>
+         </layout>
+        </widget>
+     </item>
+    </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

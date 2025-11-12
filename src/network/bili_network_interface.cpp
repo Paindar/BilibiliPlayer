@@ -163,7 +163,7 @@ std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid(const std::s
 }
 
 /*********** Interface method *****************/
-std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std::string& title, int page) {
+std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitleOld(const std::string& title, int page) {
     std::unordered_map<std::string, std::string> params = {
         {"search_type", "video"},
         {"keyword", title},
@@ -199,7 +199,7 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
             info.bvid = item["bvid"].asString();
             info.author = item["author"].asString();
             info.description = item["description"].asString();
-            
+            info.coverImg = "https:" + item["pic"].asString();
             // Clean up HTML tags from title
             std::regex html_tag("<[^>]*>");
             info.title = std::regex_replace(info.title, html_tag, "");
@@ -208,6 +208,66 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitle(const std
         }
     }
     return results;
+}
+
+std::vector<BilibiliSearchResult> BilibiliNetworkInterface::searchByTitle(const std::string& title, int page) {
+    // Step 1: Search for videos by title (blocking)
+    std::vector<BilibiliVideoInfo> videoResults = searchByTitleOld(title, page);
+    
+    if (videoResults.empty()) {
+        LOG_WARN("No video results found for title: {}", title);
+        return {};
+    }
+    
+    // Step 2: For each video, get page info asynchronously
+    std::vector<std::future<std::vector<BilibiliSearchResult>>> pageFutures;
+    
+    for (const auto& video : videoResults) {
+        // Launch async task to get pages for this bvid
+        auto future = std::async(std::launch::async, 
+            [this, video]() -> std::vector<BilibiliSearchResult> {
+            try {
+                std::scoped_lock lock(m_clientMutex_);
+                auto pages = getPagesCid_unsafe(video.bvid);
+                std::vector<BilibiliSearchResult> results;
+                for (auto& page : pages) {
+                    results.emplace_back(BilibiliSearchResult{
+                        .title = video.title,
+                        .bvid = video.bvid,
+                        .author = video.author,
+                        .description = video.description,
+                        .cover = video.coverImg,
+                        .cid = page.cid,
+                        .partTitle = page.part,
+                        .duration = page.duration * 1000  // convert to milliseconds
+                    });
+                }
+                return std::move(results);
+            } catch (const std::exception& e) {
+                LOG_ERROR("Failed to get pages for bvid {}: {}", video.bvid, e.what());
+                return {};
+            }
+        });
+        
+        pageFutures.push_back(std::move(future));
+    }
+    
+    // Step 3: Collect all results and enrich page info with video metadata
+    std::vector<BilibiliSearchResult> allPages;
+    
+    for (auto& future : pageFutures) {
+        try {
+            auto pages = future.get();
+            allPages.insert(allPages.end(), pages.begin(), pages.end());
+        } catch (const std::exception& e) {
+            LOG_ERROR("Error retrieving page info: {}", e.what());
+        }
+    }
+    
+    LOG_INFO("Found {} total pages from {} videos for search: {}", 
+             allPages.size(), videoResults.size(), title);
+    
+    return allPages;
 }
 
 std::string network::BilibiliNetworkInterface::getAudioUrlByParams(const std::string &params)
@@ -749,7 +809,7 @@ std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid_unsafe(const
                 info.page = page["page"].asInt();
                 info.part = page["part"].asString();
                 info.duration = page["duration"].asInt();
-                info.first_frame = page["first_frame"].asString();
+                info.firstFrame = page["first_frame"].asString();
                 pages.push_back(info);
             }
         }

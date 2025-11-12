@@ -49,10 +49,16 @@ public:
     explicit AudioPlayerController(QObject *parent = nullptr);
     ~AudioPlayerController();
 
+    // Configuration
+    void saveConfig();
+    void loadConfig();
+
     // Playlist control
     void playPlaylist(const QUuid& playlistId, int startIndex = 0);
     void playPlaylistFromSong(const QUuid& playlistId, const playlist::SongInfo& startSong);
-    // void setCurrentPlaylist(const QUuid& playlistId);
+    void setCurrentPlaylist(const QUuid& playlistId, const int startIndex = 0);
+    QUuid getCurrentPlaylistId() const;
+    int getCurrentAudioIndex() const;
     void clearPlaylist();
 
     // Playback control
@@ -83,7 +89,7 @@ signals:
     void playbackCompleted();
     void currentSongChanged(const playlist::SongInfo& song, int index);
     void positionChanged(qint64 positionMs);
-    void durationChanged(qint64 durationMs);
+    // void durationChanged(qint64 durationMs);
     void playModeChanged(playlist::PlayMode mode);
     void volumeChanged(float volume);
     
@@ -93,6 +99,7 @@ signals:
 
 private slots:
     void onPositionTimerTimeout();
+    void onPlaylistChanged(const QUuid& playlistId);
 
 private:
     void registerEventHandlers();

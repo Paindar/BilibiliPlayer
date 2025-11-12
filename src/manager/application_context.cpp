@@ -169,6 +169,7 @@ void ApplicationContext::initializeAudioPlayerController()
     
     // AudioPlayerController needs PlaylistManager and NetworkManager
     m_audioPlayerController = std::make_unique<audio::AudioPlayerController>(this);
+    m_audioPlayerController->loadConfig();
     
     LOG_DEBUG("AudioPlayerController initialized");
 }
@@ -264,6 +265,7 @@ void ApplicationContext::shutdown()
         if (m_audioPlayerController) {
             LOG_DEBUG("Stopping audio playback...");
             m_audioPlayerController->stop(); // Graceful stop before destruction
+            m_audioPlayerController->saveConfig();
         }
         
         // Save playlist data before destroying manager

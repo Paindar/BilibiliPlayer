@@ -74,6 +74,16 @@ public:
     QString setCategoriesFilePath(const QString& relativePath);
     void setAutoSaveEnabled(bool enabled);
     void setAutoSaveInterval(int intervalMinutes);
+
+    // Audio settings (needed by AudioPlayerController)
+    int getVolumeLevel() const;
+    void setVolumeLevel(int level);
+    int getPlayMode() const;
+    void setPlayMode(int mode);
+    QString getCurrentPlaylistId() const;
+    void setCurrentPlaylistId(const QString& playlistId);
+    int getCurrentAudioIndex() const;
+    void setCurrentAudioIndex(int index);
     
     // Error logging
     void logNetworkError(const QString& error);

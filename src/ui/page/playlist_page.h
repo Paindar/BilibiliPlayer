@@ -50,6 +50,9 @@ signals:
 private slots:
     void onSongDoubleClicked(QTreeWidgetItem* item, int column);
     void onSelectionChanged();
+    void onNetworkDownload(QString url, QString savePath);
+    void showContextMenu(const QPoint& pos);
+    void deleteSong();
 
 private:
     void setupUI();
@@ -62,4 +65,5 @@ private:
     Ui_PlaylistPageForm *ui;
     PlaylistManager* m_playlistManager;
     QUuid m_currentPlaylistId;
+    QString m_currentCoverPath;
 };
