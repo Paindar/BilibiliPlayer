@@ -36,8 +36,6 @@ set(PROJECT_SOURCES
     # UI utility components
     ui/util/elided_label.cpp
     ui/util/elided_label.h
-    ui/util/scrolling_item_delegate.cpp
-    ui/util/scrolling_item_delegate.h
 
     # Event bus components
     event/event_bus.hpp

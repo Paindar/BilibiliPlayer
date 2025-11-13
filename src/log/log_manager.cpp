@@ -122,7 +122,14 @@ void LogManager::initialize(const std::string& logDirectory)
         // Create logger with both sinks
         m_logger = std::make_shared<spdlog::logger>("BilibiliPlayer", sinks.begin(), sinks.end());
         m_logger->set_level(spdlog::level::debug);
+        
+        // In debug builds, flush on every log for immediate visibility
+        // In release builds, only flush on warnings and above for performance
+#ifdef NDEBUG
         m_logger->flush_on(spdlog::level::warn);
+#else
+        m_logger->flush_on(spdlog::level::trace);
+#endif
         
         // Register as default logger
         spdlog::register_logger(m_logger);
