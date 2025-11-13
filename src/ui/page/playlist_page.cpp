@@ -2,6 +2,7 @@
 #include "ui_playlist_page.h"
 #include "../../playlist/playlist_manager.h"
 #include "../../log/log_manager.h"
+#include <ui/util/elided_label.h>
 #include <QHeaderView>
 #include <QPixmap>
 #include <QUrl>
@@ -9,6 +10,9 @@
 #include <QTime>
 #include <QMenu>
 #include <QAction>
+#include <QEvent>
+#include <QTimer>
+#include <QPropertyAnimation>
 #include <manager/application_context.h>
 
 const QString PlaylistPage::PLAYLIST_PAGE_TYPE = "playlist";
@@ -20,6 +24,7 @@ PlaylistPage::PlaylistPage(QWidget *parent)
     , m_playlistManager(nullptr)
 {
     ui->setupUi(this);
+    
     setupUI();
     
     // Enable context menu
@@ -267,6 +272,12 @@ void PlaylistPage::updateSongList()
         LOG_DEBUG("Adding song to UI: {}", song.title.toStdString());
         QTreeWidgetItem* item = createSongItem(song);
         ui->songListView->addTopLevelItem(item);
+        // Create your custom QLabel
+        ScrollingLabel* titleLabel = new ScrollingLabel(this);
+        titleLabel->setText(song.title);
+
+        // Replace column 0's text with this label
+        ui->songListView->setItemWidget(item, 0, titleLabel);
     }
     
     LOG_DEBUG("Song list updated, total items in UI: {}", ui->songListView->topLevelItemCount());
@@ -275,7 +286,7 @@ void PlaylistPage::updateSongList()
 QTreeWidgetItem* PlaylistPage::createSongItem(const playlist::SongInfo& song)
 {
     QTreeWidgetItem* item = new QTreeWidgetItem();
-    item->setText(0, song.title);
+    // item->setText(0, song.title);
     item->setText(1, song.uploader);
     
     // Convert platform enum to string - you may need to implement this conversion
@@ -290,7 +301,7 @@ QTreeWidgetItem* PlaylistPage::createSongItem(const playlist::SongInfo& song)
     
     // Store song data for retrieval
     item->setData(0, Qt::UserRole, QVariant::fromValue(song));
-    
+
     return item;
 }
 
