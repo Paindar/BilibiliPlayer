@@ -191,10 +191,27 @@ add_custom_command(TARGET BilibiliPlayer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_FILE_DIR:BilibiliPlayer>/platforms"
 
-    # 3. Copy the Qt Windows platform plugin
+    # 3. Copy the Qt core DLL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${QT_INSTALL_DIR}/bin/Qt6Core.dll"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${QT_INSTALL_DIR}/bin/Qt6Gui.dll"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${QT_INSTALL_DIR}/bin/Qt6Widgets.dll"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>"
+
+    # 4. Copy the Qt Windows platform plugin
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${QT_INSTALL_DIR}/plugins/platforms/qwindows.dll"
         "$<TARGET_FILE_DIR:BilibiliPlayer>/platforms"
+
+    
+    # 5. Copy the Qt Image plugin
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${QT_INSTALL_DIR}/plugins/imageformats/qjpeg.dll"
+        "$<TARGET_FILE_DIR:BilibiliPlayer>/imageformats"
 
     COMMENT "Copying DLLs (Conan + Qt) to runtime output folder"
 )
