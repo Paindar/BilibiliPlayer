@@ -409,23 +409,26 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
         .uploader = result.uploader,
         .platform = static_cast<int>(result.platform),
         .duration = result.duration,
-        .coverName = result.coverUrl,
+        .coverName = result.coverImg,  // Use coverImg from search result
         .args = result.interfaceData
     };
     bool success = PLAYLIST_MANAGER->addSongToPlaylist(song, currentPlaylistUuid);
     if (!success) {
         LOG_ERROR("Failed to add song to playlist");
     }
-    std::string coverName = util::md5Hash(result.coverUrl.toStdString()) + ".jpg";
-    std::string coverPath = CONFIG_MANAGER->getCoverCacheDirectory().toStdString() + "/" + coverName;
-    if (!QFile::exists(QString::fromStdString(coverPath))) {
+    
+    // Download cover image if it doesn't exist in tmp/cover
+    QString coverPath = CONFIG_MANAGER->getCoverCacheDirectory() + "/" + result.coverImg;
+    if (!QFile::exists(coverPath)) {
+        LOG_INFO("Downloading cover image: {} -> {}", result.coverUrl.toStdString(), coverPath.toStdString());
         NETWORK_MANAGER->downloadAsync(network::SupportInterface::Bilibili,
                                            result.coverUrl,
-                                           QString::fromStdString(coverPath));
+                                           coverPath);
     }
+    
     auto playlist = playlistOpt.value();
     if (playlist.coverUri.isEmpty()) {
-        playlist.coverUri = QString::fromStdString(coverPath);
+        playlist.coverUri = coverPath;
         PLAYLIST_MANAGER->updatePlaylist(playlist, QUuid());
     }
     
