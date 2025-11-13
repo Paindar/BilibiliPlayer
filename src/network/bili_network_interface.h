@@ -1,5 +1,6 @@
 #pragma once
 
+#include "i_network_platform_interface.h"
 #include <unordered_map>
 #include <string>
 #include <memory>
@@ -41,32 +42,31 @@ namespace network
         int duration;
     };
 
-    class BilibiliNetworkInterface 
+    class BilibiliNetworkInterface : public INetworkPlatformInterface
     {
     public:
         // Constructor/Destructor
         BilibiliNetworkInterface();
-        ~BilibiliNetworkInterface();
-        bool initializeDefaultConfig();
-        // Configuration loading/saving
-        bool loadConfig(const std::string& config_file = "bilibili.json");
-        bool saveConfig(const std::string& config_file = "bilibili.json");
+        ~BilibiliNetworkInterface() override;
         
-        // Configuration
-        bool setPlatformDirectory(const std::string& platform_dir);
-        void setTimeout(int timeout_sec);
-        void setUserAgent(const std::string& user_agent);
-    public: // interface implement
-        // Search videos by title and get page info (non-blocking, returns combined results)
+        // ========== INetworkPlatformInterface Implementation ==========
+        bool initializeDefaultConfig() override;
+        bool loadConfig(const std::string& config_file = "bilibili.json") override;
+        bool saveConfig(const std::string& config_file = "bilibili.json") override;
+        bool setPlatformDirectory(const std::string& platform_dir) override;
+        void setTimeout(int timeout_sec) override;
+        void setUserAgent(const std::string& user_agent) override;
+        
+        std::string getAudioUrlByParams(const std::string& params) override;
+        uint64_t getStreamBytesSize(const std::string& url) override;
+        std::future<bool> asyncDownloadStream(
+            const std::string& url,
+            std::function<bool(const char*, size_t)> content_receiver,
+            std::function<bool(uint64_t, uint64_t)> progress_callback = nullptr) override;
+        
+    public: // Platform-specific methods
+        // Search videos by title and get page info (platform-specific return type)
         std::vector<BilibiliSearchResult> searchByTitle(const std::string& title, int page = 1);
-        // Get audio URL by interface parameters (e.g., bvid/cid)
-        std::string getAudioUrlByParams(const std::string& params);
-        // Get stream size by URL
-        uint64_t getStreamBytesSize(const std::string& url);
-        // Async streaming - returns immediately, streams in background thread
-        std::future<bool> asyncDownloadStream(const std::string& url,
-                                            std::function<bool(const char*, size_t)> content_receiver,
-                                            std::function<bool(uint64_t, uint64_t)> progress_callback = nullptr);
 
 #ifdef UNIT_TEST
     // Test helpers (only present when UNIT_TEST is defined at compile time)

@@ -10,7 +10,13 @@
 #include <thread>
 #include <unordered_map>
 #include <stream/realtime_pipe.hpp>
-#include "bili_network_interface.h"
+#include "i_network_platform_interface.h"
+
+// Forward declarations for platform-specific types
+namespace network
+{
+    class BilibiliNetworkInterface;
+}
 
 namespace network
 {
@@ -26,7 +32,8 @@ namespace network
         QString uploader;
         SupportInterface platform;
         int duration;
-        QString coverUrl;
+        QString coverUrl;       // Network URL for cover image
+        QString coverImg;       // Filename for cover (not including tmp/cover/ path)
         QString description;
 
         // Reserved for raw interface data storage

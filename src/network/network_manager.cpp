@@ -1,4 +1,5 @@
 #include "network_manager.h"
+#include "bili_network_interface.h"
 #include <log/log_manager.h>
 #include <future>
 #include <thread>
@@ -565,20 +566,30 @@ namespace network
 
         auto fut = std::async(std::launch::async, [this, keyword, maxResults, &cancelFlag]() -> QList<SearchResult> {
             try {
+                // Cast to concrete type to access platform-specific searchByTitle
+                auto* biliInterface = dynamic_cast<BilibiliNetworkInterface*>(m_biliInterface.get());
+                if (!biliInterface) {
+                    throw std::runtime_error("Invalid Bilibili interface");
+                }
+                
                 // New searchByTitle already combines searching and getting page info
-                auto pages = m_biliInterface->searchByTitle(keyword.toStdString()); // Returns BilibiliPageInfo with enriched metadata
+                auto pages = biliInterface->searchByTitle(keyword.toStdString()); // Returns BilibiliPageInfo with enriched metadata
                 
                 QList<SearchResult> result;
                 for (const auto& page : pages) {
                     if (cancelFlag.load()) {
                         return {};
                     }
+                    // Generate cover filename from bvid (unique identifier)
+                    QString coverFilename = QString("%1.jpg").arg(QString::fromStdString(page.bvid));
+                    
                     SearchResult pageResult {
                         .title = QString::fromStdString(fmt::format("{} - {}", page.title, page.partTitle)),
                         .uploader = QString::fromStdString(page.author),
                         .platform = SupportInterface::Bilibili,
                         .duration = page.duration,
                         .coverUrl = QString::fromStdString(page.cover),
+                        .coverImg = coverFilename,
                         .description = QString::fromStdString(page.description.substr(0, std::min<size_t>(200, page.description.length()))),
                         .interfaceData = QString("bvid=%1&cid=%2")
                             .arg(QString::fromStdString(page.bvid))
