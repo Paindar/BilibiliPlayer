@@ -85,6 +85,16 @@ public:
     int getCurrentAudioIndex() const;
     void setCurrentAudioIndex(int index);
     
+    // Playlist UI settings (column widths)
+    int getPlaylistTitleWidth() const;
+    void setPlaylistTitleWidth(int width);
+    int getPlaylistUploaderWidth() const;
+    void setPlaylistUploaderWidth(int width);
+    int getPlaylistPlatformWidth() const;
+    void setPlaylistPlatformWidth(int width);
+    int getPlaylistDurationWidth() const;
+    void setPlaylistDurationWidth(int width);
+    
     // Error logging
     void logNetworkError(const QString& error);
     QStringList getRecentErrors() const;

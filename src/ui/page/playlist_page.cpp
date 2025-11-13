@@ -1,7 +1,8 @@
 #include "playlist_page.h"
 #include "ui_playlist_page.h"
-#include "../../playlist/playlist_manager.h"
-#include "../../log/log_manager.h"
+#include <playlist/playlist_manager.h>
+#include <log/log_manager.h>
+#include <config/config_manager.h>
 #include <ui/util/elided_label.h>
 #include <QHeaderView>
 #include <QPixmap>
@@ -51,14 +52,18 @@ void PlaylistPage::setupUI()
     // Configure the tree widget
     ui->songListView->setHeaderLabels({"Title", "Uploader/Artist", "Platform", "Duration"});
     
-    // Set column widths
+    // Configure header for interactive resizing
     QHeaderView* header = ui->songListView->header();
     header->setStretchLastSection(false);
-    header->resizeSection(0, 300);  // Title
-    header->resizeSection(1, 200);  // Uploader/Artist
-    header->resizeSection(2, 120);  // Platform
-    header->resizeSection(3, 80);   // Duration
-    header->setSectionResizeMode(0, QHeaderView::Stretch);
+    header->setSectionsMovable(false);  // Prevent column reordering
+    header->setSectionResizeMode(QHeaderView::Interactive);  // Enable manual resizing
+    
+    // Load saved column widths or use defaults
+    loadColumnWidths();
+    
+    // Save column widths when user resizes them
+    connect(header, &QHeaderView::sectionResized,
+            this, &PlaylistPage::saveColumnWidths);
     
     // Set default UI state
     ui->playlistNameLabel->setText("No Playlist Selected");
@@ -410,6 +415,63 @@ void PlaylistPage::deleteSong()
             LOG_ERROR("Failed to delete song '{}' from playlist", song.title.toStdString());
         }
     }
+}
+
+void PlaylistPage::loadColumnWidths()
+{
+    auto configManager = CONFIG_MANAGER;
+    if (!configManager) {
+        LOG_WARN("ConfigManager not available, using default column widths");
+        resetColumnWidths();
+        return;
+    }
+
+    QHeaderView* header = ui->songListView->header();
     
-    emit playlistModified();
+    // Load column widths from config (with minimum width sanity check)
+    int titleWidth = configManager->getPlaylistTitleWidth();
+    int uploaderWidth = configManager->getPlaylistUploaderWidth();
+    int platformWidth = configManager->getPlaylistPlatformWidth();
+    int durationWidth = configManager->getPlaylistDurationWidth();
+    
+    // Apply widths with minimum check
+    header->resizeSection(0, titleWidth > 20 ? titleWidth : 300);
+    header->resizeSection(1, uploaderWidth > 20 ? uploaderWidth : 200);
+    header->resizeSection(2, platformWidth > 20 ? platformWidth : 120);
+    header->resizeSection(3, durationWidth > 20 ? durationWidth : 80);
+    
+    LOG_DEBUG("Loaded column widths from config");
+}
+
+void PlaylistPage::saveColumnWidths()
+{
+    auto configManager = CONFIG_MANAGER;
+    if (!configManager) {
+        return;
+    }
+
+    QHeaderView* header = ui->songListView->header();
+    
+    // Save each column width using specific ConfigManager methods
+    configManager->setPlaylistTitleWidth(header->sectionSize(0));
+    configManager->setPlaylistUploaderWidth(header->sectionSize(1));
+    configManager->setPlaylistPlatformWidth(header->sectionSize(2));
+    configManager->setPlaylistDurationWidth(header->sectionSize(3));
+    
+    configManager->saveToFile();
+    LOG_DEBUG("Saved column widths to config");
+}
+
+void PlaylistPage::resetColumnWidths()
+{
+    QHeaderView* header = ui->songListView->header();
+    
+    // Default widths: Title (40%), Uploader (25%), Platform (20%), Duration (15%)
+    // Assuming ~750px total width
+    header->resizeSection(0, 300);  // Title
+    header->resizeSection(1, 200);  // Uploader/Artist
+    header->resizeSection(2, 120);  // Platform
+    header->resizeSection(3, 80);   // Duration
+    
+    LOG_DEBUG("Reset column widths to defaults");
 }

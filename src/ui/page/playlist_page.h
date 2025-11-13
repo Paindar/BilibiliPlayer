@@ -39,6 +39,11 @@ public:
     // Getters
     QUuid getCurrentPlaylistId() const { return m_currentPlaylistId; }
     
+    // Column width management
+    void loadColumnWidths();
+    void saveColumnWidths();
+    void resetColumnWidths();
+    
     // INavigablePage interface
     QString getNavigationState() const override;
     void restoreFromState(const QString& state) override;

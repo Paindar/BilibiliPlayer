@@ -7,9 +7,6 @@
 #include <QUuid>
 class QTimer;
 #include <QReadWriteLock>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 #include <QTextStream>
 #include <QFile>
 #include <optional>

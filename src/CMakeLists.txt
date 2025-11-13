@@ -36,6 +36,10 @@ set(PROJECT_SOURCES
     # UI utility components
     ui/util/elided_label.cpp
     ui/util/elided_label.h
+    
+    # Theme management
+    ui/theme/theme_manager.cpp
+    ui/theme/theme_manager.h
 
     # Event bus components
     event/event_bus.hpp
@@ -77,6 +81,7 @@ set(PROJECT_SOURCES
     # Logging system
     log/log_manager.cpp
     log/log_manager.h
+
 
     # Utility components
     util/circular_buffer.hpp

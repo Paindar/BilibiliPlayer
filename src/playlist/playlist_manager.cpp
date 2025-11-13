@@ -1,6 +1,7 @@
 #include "playlist_manager.h"
 #include <config/config_manager.h>
 #include <log/log_manager.h>
+#include <json/json.h>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -9,6 +10,8 @@
 #include <algorithm>
 #include <optional>
 #include <functional>
+#include <fstream>
+#include <sstream>
 #include <fmt/format.h>
 #include <manager/application_context.h>
 #include <util/md5.h>
@@ -637,43 +640,43 @@ bool PlaylistManager::saveCategoriesToJsonFile()
     QString workspaceDir = m_configManager->getWorkspaceDirectory();
     QString fullPath = QDir(workspaceDir).absoluteFilePath(categoryFilePath);
     
-    QJsonDocument doc;
-    QJsonArray categoriesArray;
+    Json::Value root(Json::objectValue);
+    Json::Value categoriesArray(Json::arrayValue);
     
     // Convert hashmap structure to JSON (with read lock)
     QReadLocker locker(&m_dataLock);
     for (auto catIt = m_categories.begin(); catIt != m_categories.end(); ++catIt) {
         const playlist::CategoryInfo& category = catIt.value();
-        QJsonObject categoryObj;
-        categoryObj["uuid"] = category.uuid.toString();
-        categoryObj["name"] = category.name;
+        Json::Value categoryObj(Json::objectValue);
+        categoryObj["uuid"] = category.uuid.toString().toStdString();
+        categoryObj["name"] = category.name.toStdString();
         
         // Get playlists for this category
-        QJsonArray playlistsArray;
+        Json::Value playlistsArray(Json::arrayValue);
         auto playlistIds = m_categoryPlaylists.value(category.uuid);
         for (const QUuid& playlistId : playlistIds) {
             auto playlistIt = m_playlists.find(playlistId);
             if (playlistIt != m_playlists.end()) {
                 const playlist::PlaylistInfo& playlist = playlistIt.value();
-                QJsonObject playlistObj;
-                playlistObj["uuid"] = playlist.uuid.toString();
-                playlistObj["name"] = playlist.name;
-                playlistObj["creator"] = playlist.creator;
-                playlistObj["description"] = playlist.description;
-                playlistObj["coverUri"] = playlist.coverUri;
+                Json::Value playlistObj(Json::objectValue);
+                playlistObj["uuid"] = playlist.uuid.toString().toStdString();
+                playlistObj["name"] = playlist.name.toStdString();
+                playlistObj["creator"] = playlist.creator.toStdString();
+                playlistObj["description"] = playlist.description.toStdString();
+                playlistObj["coverUri"] = playlist.coverUri.toStdString();
                 
                 // Get songs for this playlist
-                QJsonArray songsArray;
+                Json::Value songsArray(Json::arrayValue);
                 auto songs = m_playlistSongs.value(playlistId);
                 for (const playlist::SongInfo& song : songs) {
-                    QJsonObject songObj;
-                    songObj["title"] = song.title;
-                    songObj["uploader"] = song.uploader;
+                    Json::Value songObj(Json::objectValue);
+                    songObj["title"] = song.title.toStdString();
+                    songObj["uploader"] = song.uploader.toStdString();
                     songObj["platform"] = song.platform;
                     songObj["duration"] = song.duration;
-                    songObj["filepath"] = song.filepath;
-                    songObj["coverName"] = song.coverName;
-                    songObj["args"] = song.args;
+                    songObj["filepath"] = song.filepath.toStdString();
+                    songObj["coverName"] = song.coverName.toStdString();
+                    songObj["args"] = song.args.toStdString();
                     songsArray.append(songObj);
                 }
                 playlistObj["songs"] = songsArray;
@@ -684,20 +687,21 @@ bool PlaylistManager::saveCategoriesToJsonFile()
         categoriesArray.append(categoryObj);
     }
     
-    QJsonObject rootObj;
-    rootObj["categories"] = categoriesArray;
-    rootObj["currentPlaylistId"] = m_currentPlaylistId.toString();
+    root["categories"] = categoriesArray;
+    root["currentPlaylistId"] = m_currentPlaylistId.toString().toStdString();
     locker.unlock(); // Unlock before file I/O
     
-    doc.setObject(rootObj);
-    
-    QFile file(fullPath);
-    if (!file.open(QIODevice::WriteOnly)) {
+    // Write to file
+    std::ofstream file(fullPath.toStdString());
+    if (!file.is_open()) {
         LOG_ERROR("Failed to open file for writing: {}", fullPath.toStdString());
         return false;
     }
     
-    file.write(doc.toJson());
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "  ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(root, &file);
     file.close();
     
     LOG_INFO("Categories saved to: {}", fullPath.toStdString());
@@ -710,27 +714,28 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
     QString workspaceDir = m_configManager->getWorkspaceDirectory();
     QString fullPath = QDir(workspaceDir).absoluteFilePath(categoryFilePath);
     
-    QFile file(fullPath);
-    if (!file.exists()) {
+    QFileInfo fileInfo(fullPath);
+    if (!fileInfo.exists()) {
         LOG_INFO("Category file does not exist: {}, will create default setup", fullPath.toStdString());
         ensureDefaultSetup();
         return false;
     }
     
-    if (!file.open(QIODevice::ReadOnly)) {
+    std::ifstream file(fullPath.toStdString());
+    if (!file.is_open()) {
         LOG_ERROR("Failed to open category file: {}", fullPath.toStdString());
         return false;
     }
     
-    QByteArray data = file.readAll();
-    file.close();
-    
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-    if (parseError.error != QJsonParseError::NoError) {
-        LOG_ERROR("JSON parse error in category file: {}", parseError.errorString().toStdString());
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errs;
+    if (!Json::parseFromStream(builder, file, &root, &errs)) {
+        LOG_ERROR("JSON parse error in category file: {}", errs);
+        file.close();
         return false;
     }
+    file.close();
     
     {
         QWriteLocker locker(&m_dataLock);
@@ -741,32 +746,27 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
         m_categoryPlaylists.clear();
         m_playlistSongs.clear();
     
-        QJsonObject rootObj = doc.object();
-        QJsonArray categoriesArray = rootObj["categories"].toArray();
+        const Json::Value& categoriesArray = root["categories"];
         
         // Load categories and playlists
-        for (const QJsonValue& categoryValue : categoriesArray) {
-            QJsonObject categoryObj = categoryValue.toObject();
-            
+        for (const Json::Value& categoryValue : categoriesArray) {
             playlist::CategoryInfo category;
-            category.uuid = QUuid::fromString(categoryObj["uuid"].toString());
-            category.name = categoryObj["name"].toString();
+            category.uuid = QUuid::fromString(QString::fromStdString(categoryValue["uuid"].asString()));
+            category.name = QString::fromStdString(categoryValue["name"].asString());
             
             // Add category
             m_categories.insert(category.uuid, category);
             m_categoryPlaylists.insert(category.uuid, QList<QUuid>());
             
             // Load playlists for this category
-            QJsonArray playlistsArray = categoryObj["playlists"].toArray();
-            for (const QJsonValue& playlistValue : playlistsArray) {
-                QJsonObject playlistObj = playlistValue.toObject();
-                
+            const Json::Value& playlistsArray = categoryValue["playlists"];
+            for (const Json::Value& playlistValue : playlistsArray) {
                 playlist::PlaylistInfo playlist;
-                playlist.uuid = QUuid::fromString(playlistObj["uuid"].toString());
-                playlist.name = playlistObj["name"].toString();
-                playlist.creator = playlistObj["creator"].toString();
-                playlist.description = playlistObj["description"].toString();
-                playlist.coverUri = playlistObj["coverUri"].toString();
+                playlist.uuid = QUuid::fromString(QString::fromStdString(playlistValue["uuid"].asString()));
+                playlist.name = QString::fromStdString(playlistValue["name"].asString());
+                playlist.creator = QString::fromStdString(playlistValue["creator"].asString());
+                playlist.description = QString::fromStdString(playlistValue["description"].asString());
+                playlist.coverUri = QString::fromStdString(playlistValue["coverUri"].asString());
                 
                 // Add playlist
                 m_playlists.insert(playlist.uuid, playlist);
@@ -774,18 +774,16 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
                 
                 // Load songs for this playlist
                 QList<playlist::SongInfo> songs;
-                QJsonArray songsArray = playlistObj["songs"].toArray();
-                for (const QJsonValue& songValue : songsArray) {
-                    QJsonObject songObj = songValue.toObject();
-                    
+                const Json::Value& songsArray = playlistValue["songs"];
+                for (const Json::Value& songValue : songsArray) {
                     playlist::SongInfo song;
-                    song.title = songObj["title"].toString();
-                    song.uploader = songObj["uploader"].toString();
-                    song.platform = songObj["platform"].toInt();
-                    song.duration = songObj["duration"].toInt();
-                    song.filepath = songObj["filepath"].toString();
-                    song.coverName = songObj["coverName"].toString();
-                    song.args = songObj["args"].toString();
+                    song.title = QString::fromStdString(songValue["title"].asString());
+                    song.uploader = QString::fromStdString(songValue["uploader"].asString());
+                    song.platform = songValue["platform"].asInt();
+                    song.duration = songValue["duration"].asInt();
+                    song.filepath = QString::fromStdString(songValue["filepath"].asString());
+                    song.coverName = QString::fromStdString(songValue["coverName"].asString());
+                    song.args = QString::fromStdString(songValue["args"].asString());
                     
                     songs.append(song);
                 }
@@ -794,7 +792,7 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
         }
     
         // Load current playlist ID
-        QString currentPlaylistIdStr = rootObj["currentPlaylistId"].toString();
+        QString currentPlaylistIdStr = QString::fromStdString(root["currentPlaylistId"].asString());
         m_currentPlaylistId = QUuid::fromString(currentPlaylistIdStr);
     }
     

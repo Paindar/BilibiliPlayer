@@ -3,6 +3,7 @@
 #include <QString>
 #include <QList>
 #include <QUuid>
+#include <QMetaType>
 
 namespace playlist
 {

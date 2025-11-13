@@ -5,6 +5,8 @@
 #include <network/network_manager.h>
 #include <log/log_manager.h>
 #include <QTimer>
+#include <iostream>
+#include <fstream>
 
 namespace audio {
 void AudioPlayerController::onPlayEvent(const QVariantHash&)

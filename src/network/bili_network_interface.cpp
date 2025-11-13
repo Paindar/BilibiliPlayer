@@ -132,7 +132,10 @@ bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
     if (!saveWbiKeys_unsafe(root["wbi_keys"])) {
         LOG_ERROR("Failed to save WBI keys to config.");
     }
-    file << root.toStyledString();
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "  ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(root, &file);
     LOG_INFO("Configuration saved to {}", config);
     return true;
 }
