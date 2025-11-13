@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QTimer>
 #include <log/log_manager.h>
+#include <audio/audio_player_controller.h>
 #include <network/network_manager.h>
 #include <playlist/playlist_manager.h>
 #include <manager/application_context.h>
@@ -41,14 +42,13 @@ SearchResultItemWidget::SearchResultItemWidget(const network::SearchResult& resu
     infoLayout->setSpacing(4);
     
     // Title label
-    m_titleLabel = new QLabel(this);
-    m_titleLabel->setWordWrap(true);
+    m_titleLabel = new ScrollingLabel(this);
     m_titleLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #ffffff; }");
     m_titleLabel->setText(result.title);
     infoLayout->addWidget(m_titleLabel);
     
     // Uploader and Platform label (combined)
-    m_uploaderLabel = new QLabel(this);
+    m_uploaderLabel = new ScrollingLabel(this);
     m_uploaderLabel->setStyleSheet("QLabel { font-size: 12px; color: #aaaaaa; }");
     QString platformName;
     switch (result.platform) {
@@ -59,7 +59,8 @@ SearchResultItemWidget::SearchResultItemWidget(const network::SearchResult& resu
             platformName = "未知";
             break;
     }
-    m_uploaderLabel->setText(QString("上传者: %1 | 平台: %2").arg(result.uploader).arg(platformName));
+    QString uploaderText = QString("上传者: %1 | 平台: %2").arg(result.uploader).arg(platformName);
+    m_uploaderLabel->setText(uploaderText);
     infoLayout->addWidget(m_uploaderLabel);
     
     // Description label
@@ -426,5 +427,11 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
     if (playlist.coverUri.isEmpty()) {
         playlist.coverUri = QString::fromStdString(coverPath);
         PLAYLIST_MANAGER->updatePlaylist(playlist, QUuid());
+    }
+    
+    if (AUDIO_PLAYER_CONTROLLER) {
+        if (!AUDIO_PLAYER_CONTROLLER->isPlaying()) {
+            AUDIO_PLAYER_CONTROLLER->playPlaylistFromSong(currentPlaylistUuid, song);
+        }
     }
 }

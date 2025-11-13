@@ -15,6 +15,7 @@ QT_END_NAMESPACE
 // Forward-declare Qt classes used only as pointers in this header to reduce compile-time dependencies
 class QTreeWidget;
 class QTreeWidgetItem;
+class ScrollingLabel;
 
 class PlaylistManager;
 

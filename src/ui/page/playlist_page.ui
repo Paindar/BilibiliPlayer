@@ -107,7 +107,7 @@
               <number>12</number>
              </property>
              <item>
-              <widget class="QLabel" name="playlistNameLabel">
+              <widget class="ScrollingLabel" name="playlistNameLabel">
                <property name="font">
                 <font>
                  <pointsize>18</pointsize>
@@ -118,13 +118,19 @@
                <property name="text">
                 <string>Playlist Name</string>
                </property>
+               <property name="textFormat">
+                <enum>Qt::PlainText</enum>
+               </property>
                <property name="wordWrap">
-                <bool>true</bool>
+                <bool>false</bool>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::TextSelectableByMouse</set>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QLabel" name="creatorLabel">
+              <widget class="ScrollingLabel" name="creatorLabel">
                <property name="font">
                 <font>
                  <pointsize>10</pointsize>
@@ -135,6 +141,15 @@
                </property>
                <property name="text">
                 <string>Created by: Unknown</string>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::PlainText</enum>
+               </property>
+               <property name="wordWrap">
+                <bool>false</bool>
+               </property>
+               <property name="textInteractionFlags">
+                <set>Qt::TextSelectableByMouse</set>
                </property>
               </widget>
              </item>
@@ -238,6 +253,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ScrollingLabel</class>
+   <extends>QLabel</extends>
+   <header>ui/util/elided_label.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -156,6 +156,9 @@ void AudioPlayerController::playPlaylist(const QUuid& playlistId, int startIndex
     LOG_INFO(" Starting playlist playback with {} songs, starting at index {}", songs.size(), startIndex);
     emit currentSongChanged(m_currentPlaylist[m_currentIndex], m_currentIndex);
     // Send Start event to event processor
+    if (isPlaying()) {
+        m_eventProcessor->postEvent(audio::AudioEventProcessor::STOP);
+    }
     m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAY);
 }
 
@@ -203,6 +206,10 @@ void AudioPlayerController::playPlaylistFromSong(const QUuid& playlistId, const 
     LOG_INFO(" Starting playlist playback with {} songs, starting at index {}", songs.size(), startIndex);
     emit currentSongChanged(m_currentPlaylist[m_currentIndex], m_currentIndex);
     // Send Start event to event processor
+    
+    if (m_currentState == PlaybackState::Playing) {
+        m_eventProcessor->postEvent(audio::AudioEventProcessor::STOP);
+    }
     m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAY);
 }
 

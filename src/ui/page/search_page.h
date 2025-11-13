@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 #include <navigator/i_navigable_page.h>
 #include <network/network_manager.h>
+#include <ui/util/elided_label.h>
 
 QT_BEGIN_NAMESPACE
 class Ui_SearchPage;
@@ -27,8 +28,8 @@ public:
     
 private:
     QLabel* m_coverLabel;
-    QLabel* m_titleLabel;
-    QLabel* m_uploaderLabel;
+    ScrollingLabel* m_titleLabel;
+    ScrollingLabel* m_uploaderLabel;
     QLabel* m_platformLabel;
     QLabel* m_descriptionLabel;
     network::SearchResult m_result;

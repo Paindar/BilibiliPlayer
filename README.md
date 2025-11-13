@@ -10,7 +10,7 @@ BilibiliPlayer is a cross-platform multimedia player that demonstrates modern C+
 
 ## 🔬 AI Development Experiment
 
-This project represents a unique development experiment where approximately **95%** of the codebase was generated through AI assistance (Claude Sonnet 4), with human oversight providing:
+This project represents a unique development experiment where approximately **60%** of the codebase was generated through AI assistance (Claude Sonnet 4), with human oversight providing:
 - Architecture decisions and design patterns
 - Code reviews and optimization suggestions  
 - Integration testing and debugging

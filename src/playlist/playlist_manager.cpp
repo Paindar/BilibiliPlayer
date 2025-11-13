@@ -11,7 +11,6 @@
 #include <functional>
 #include <fmt/format.h>
 #include <manager/application_context.h>
-#include <audio/audio_player_controller.h>
 #include <util/md5.h>
 
 PlaylistManager::PlaylistManager(ConfigManager* configManager, QObject* parent)
@@ -400,11 +399,6 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
              song.title.toStdString(), 
              playlistName.toStdString(), 
              playlistId.toString().toStdString());
-    if (AUDIO_PLAYER_CONTROLLER) {
-        if (!AUDIO_PLAYER_CONTROLLER->isPlaying()) {
-            AUDIO_PLAYER_CONTROLLER->playPlaylistFromSong(playlistId, song);
-        }
-    }
     return true;
 }
 
