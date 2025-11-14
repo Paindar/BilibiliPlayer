@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <QCoreApplication>
+// #include <QCoreApplication>
 #include "config/config_manager.h"
 #include "playlist/playlist_manager.h"
 #include "playlist/playlist.h"
@@ -12,7 +12,7 @@ TEST_CASE("PlaylistManager basic CRUD", "[playlist]") {
     int argc = 1;
     char arg0[] = "test";
     char* argv[] = { arg0, nullptr };
-    QCoreApplication app(argc, argv);
+    // QCoreApplication app(argc, argv);
 
     auto tmp = std::filesystem::temp_directory_path();
     auto ws = tmp / ("BilibiliPlayerTest_Playlist_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
@@ -48,7 +48,7 @@ TEST_CASE("PlaylistManager basic CRUD", "[playlist]") {
     s.title = "Test Song";
     s.uploader = "Artist";
     s.platform = 1;
-    s.duration = "3:21";
+    s.duration = 201;
     REQUIRE(pm.addSongToPlaylist(s, p.uuid));
 
     auto songs = pm.iterateSongsInPlaylist(p.uuid, [](const SongInfo&){ return true; });

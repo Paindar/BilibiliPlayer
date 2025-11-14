@@ -1,0 +1,6 @@
+{
+  "background_image_path": "test.png",
+  "background_mode": "tiled",
+  "button_normal_color": "#ff0000",
+  # This is an invalid comment
+  "font_primary_color": "not a valid json"
