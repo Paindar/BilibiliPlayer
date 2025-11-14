@@ -16,6 +16,7 @@ SettingsPage::SettingsPage(QWidget* parent)
     , ui(new Ui::SettingsPage)
     , m_configManager(nullptr)
     , m_settingsModified(false)
+    , m_translator(new QTranslator(this))
 {
     ui->setupUi(this);
     m_configManager = ApplicationContext::instance().configManager();
@@ -140,9 +141,9 @@ void SettingsPage::loadSettings()
     else ui->themeCombo->setCurrentIndex(2); // system
     
     QString language = m_configManager->getLanguage();
-    if (language == "en") ui->languageCombo->setCurrentIndex(0);
-    else if (language == "zh") ui->languageCombo->setCurrentIndex(1);
-    else if (language == "ja") ui->languageCombo->setCurrentIndex(2);
+    if (language == "en_US" || language == "en") ui->languageCombo->setCurrentIndex(0);
+    else if (language == "zh_CN") ui->languageCombo->setCurrentIndex(1);
+    else ui->languageCombo->setCurrentIndex(0); // Default to English
     
     m_selectedAccentColor = m_configManager->getAccentColor();
     updateAccentColorButton();
@@ -175,8 +176,12 @@ void SettingsPage::saveSettings()
     QStringList themes = {"light", "dark", "system"};
     m_configManager->setTheme(themes[ui->themeCombo->currentIndex()]);
     
-    QStringList languages = {"en", "zh", "ja"};
-    m_configManager->setLanguage(languages[ui->languageCombo->currentIndex()]);
+    QStringList languages = {"en_US", "zh_CN"};
+    QString selectedLanguage = languages[ui->languageCombo->currentIndex()];
+    m_configManager->setLanguage(selectedLanguage);
+    
+    // Apply language change immediately without restart
+    applyLanguage(selectedLanguage);
     
     m_configManager->setAccentColor(m_selectedAccentColor);
     
@@ -403,4 +408,50 @@ void SettingsPage::restoreFromState(const QString& state)
     // For now, just reload settings - could be extended later
     Q_UNUSED(state)
     loadSettings();
+}
+
+void SettingsPage::applyLanguage(const QString& languageCode)
+{
+    LOG_INFO("Applying language change to: {}", languageCode.toStdString());
+    
+    // Remove previous translator if any
+    if (m_translator) {
+        QApplication::removeTranslator(m_translator);
+    }
+    
+    // Map language code to Qt translation file names
+    QString translationFile;
+    if (languageCode == "en_US") {
+        translationFile = "BilibiliPlayer_en_US";
+    } else if (languageCode == "zh_CN") {
+        translationFile = "BilibiliPlayer_zh_CN";
+    } else {
+        translationFile = "BilibiliPlayer_en_US"; // Default to English
+    }
+    
+    // Load translation file from resource/lang/ directory
+    QString translationPath = QApplication::applicationDirPath() + "/resource/lang/";
+    
+    if (m_translator->load(translationFile, translationPath)) {
+        QApplication::installTranslator(m_translator);
+        LOG_INFO("Successfully loaded translation file: {}", translationFile.toStdString());
+        
+        // Retranslate the current UI
+        ui->retranslateUi(this);
+        
+        // Emit signal to notify other components
+        if (m_configManager) {
+            emit m_configManager->languageChanged(languageCode);
+        }
+    } else {
+        LOG_WARN("Failed to load translation file: {} from {}", 
+                 translationFile.toStdString(), translationPath.toStdString());
+        
+        // If loading fails but we're switching to English, that's okay (it's the source language)
+        if (languageCode == "en_US") {
+            LOG_INFO("English is the source language, no translation file needed");
+            // Still retranslate to ensure English strings are shown
+            ui->retranslateUi(this);
+        }
+    }
 }

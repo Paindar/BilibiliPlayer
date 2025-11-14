@@ -1,7 +1,5 @@
 #include "config_manager.h"
 #include "../log/log_manager.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QFile>
 #include <QStandardPaths>
 #include <QFileInfo>
@@ -603,7 +601,59 @@ void ConfigManager::setCurrentAudioIndex(int index)
     if (!m_settings) return;
     
     m_settings->setValue("audio/current_audio_index", index);
-    LOG_INFO("Current audio index changed to: {}", index);
+    LOG_DEBUG("Current audio index changed to: {}", index);
+}
+
+int ConfigManager::getPlaylistTitleWidth() const
+{
+    return m_settings ? m_settings->value("playlist_ui/column_width_title", 300).toInt() : 300;
+}
+
+void ConfigManager::setPlaylistTitleWidth(int width)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("playlist_ui/column_width_title", width);
+    LOG_DEBUG("Playlist title column width changed to: {}", width);
+}
+
+int ConfigManager::getPlaylistUploaderWidth() const
+{
+    return m_settings ? m_settings->value("playlist_ui/column_width_uploader", 200).toInt() : 200;
+}
+
+void ConfigManager::setPlaylistUploaderWidth(int width)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("playlist_ui/column_width_uploader", width);
+    LOG_DEBUG("Playlist uploader column width changed to: {}", width);
+}
+
+int ConfigManager::getPlaylistPlatformWidth() const
+{
+    return m_settings ? m_settings->value("playlist_ui/column_width_platform", 120).toInt() : 120;
+}
+
+void ConfigManager::setPlaylistPlatformWidth(int width)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("playlist_ui/column_width_platform", width);
+    LOG_DEBUG("Playlist platform column width changed to: {}", width);
+}
+
+int ConfigManager::getPlaylistDurationWidth() const
+{
+    return m_settings ? m_settings->value("playlist_ui/column_width_duration", 80).toInt() : 80;
+}
+
+void ConfigManager::setPlaylistDurationWidth(int width)
+{
+    if (!m_settings) return;
+    
+    m_settings->setValue("playlist_ui/column_width_duration", width);
+    LOG_DEBUG("Playlist duration column width changed to: {}", width);
 }
 
 // Error logging

@@ -7,8 +7,10 @@
 #include "page/search_page.h"
 #include "page/playlist_page.h"
 #include "page/settings_page.h"
-#include "../manager/application_context.h"
-#include "../audio/audio_player_controller.h"
+#include <manager/application_context.h>
+#include <ui/theme/theme_manager.h>
+#include <audio/audio_player_controller.h>
+#include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -60,6 +62,15 @@ void MainWindow::setupCustomComponents()
     // Add player status bar widget (loaded from separate UI wrapper)
     auto* status = new PlayerStatusBar(this);
     if (ui->statusBarPlaceholderLayout) ui->statusBarPlaceholderLayout->addWidget(status);
+    
+    // Connect ThemeManager signals for theme application
+    auto* themeManager = THEME_MANAGER;
+    if (themeManager) {
+        connect(themeManager, &ThemeManager::themeApplied, this, [this, themeManager](const Theme& theme) {
+            QString styleSheet = themeManager->generateStyleSheet(theme);
+            qApp->setStyleSheet(styleSheet);
+        });
+    }
 }
 
 void MainWindow::setupNavigator()

@@ -171,13 +171,22 @@ void PlayerStatusBar::onCurrentSongChanged(const playlist::SongInfo& song, int i
             QString dirPath = CONFIG_MANAGER->getCoverCacheDirectory();
             QString coverPath = dirPath + "/" + song.coverName;
             
-            QPixmap pix(coverPath);
-            if (!pix.isNull()) {
-                QPixmap scaled = pix.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                ui->coverLabel->setPixmap(scaled);
+            // Check if cover exists, if not trigger download
+            if (!QFile::exists(coverPath)) {
+                LOG_INFO("Cover image not found at {}, will download when available", coverPath.toStdString());
+                ui->coverLabel->setText("Loading...");
+                m_currentCoverPath = coverPath;
+                // Note: The download should be triggered elsewhere (e.g., when song is added)
+                // Here we just set placeholder and remember the path
             } else {
-                LOG_WARN("Failed to load cover image: {}", coverPath.toStdString());
-                ui->coverLabel->setText("No Cover");
+                QPixmap pix(coverPath);
+                if (!pix.isNull()) {
+                    QPixmap scaled = pix.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                    ui->coverLabel->setPixmap(scaled);
+                } else {
+                    LOG_WARN("Failed to load cover image: {}", coverPath.toStdString());
+                    ui->coverLabel->setText("No Cover");
+                }
             }
         } else {
             ui->coverLabel->setText("No Cover");

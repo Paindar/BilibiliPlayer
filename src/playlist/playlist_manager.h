@@ -7,9 +7,6 @@
 #include <QUuid>
 class QTimer;
 #include <QReadWriteLock>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 #include <QTextStream>
 #include <QFile>
 #include <optional>
@@ -85,7 +82,6 @@ signals:
     void currentPlaylistChanged(const QUuid& playlistId);
 
 private slots:
-    void onConfigChanged();
     void onAutoSaveTimer();
     
 private:

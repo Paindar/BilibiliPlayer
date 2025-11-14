@@ -36,15 +36,22 @@ set(PROJECT_SOURCES
     # UI utility components
     ui/util/elided_label.cpp
     ui/util/elided_label.h
+    
+    # Theme management
+    ui/theme/theme_manager.cpp
+    ui/theme/theme_manager.h
 
     # Event bus components
     event/event_bus.hpp
     
     # Network components
-    network/bili_network_interface.cpp
-    network/bili_network_interface.h
     network/network_manager.cpp
     network/network_manager.h
+    network/platform/bili_network_interface.cpp
+    network/platform/bili_network_interface.h
+    
+    # Network platform abstraction
+    network/platform/i_platform.h
     
     # Audio components
     audio/ffmpeg_decoder.cpp
@@ -77,6 +84,7 @@ set(PROJECT_SOURCES
     # Logging system
     log/log_manager.cpp
     log/log_manager.h
+
 
     # Utility components
     util/circular_buffer.hpp

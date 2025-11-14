@@ -1,0 +1,21 @@
+{
+  "name": "Ocean Blue",
+  "description": "A calm ocean-inspired theme with blue tones",
+  "backgroundImagePath": "",
+  "backgroundMode": "none",
+  "backgroundColor": "#f0f8ff",
+  "buttonNormalColor": "#4682b4",
+  "buttonHoverColor": "#5a92c4",
+  "buttonPressedColor": "#366994",
+  "buttonDisabledColor": "#b0c4de",
+  "buttonBorderColor": "#4682b4",
+  "fontPrimaryColor": "#000080",
+  "fontSecondaryColor": "#4682b4",
+  "fontDisabledColor": "#a0a0a0",
+  "fontLinkColor": "#1e90ff",
+  "borderColor": "#87ceeb",
+  "accentColor": "#1e90ff",
+  "selectionColor": "#4682b4",
+  "windowBackgroundColor": "#f0f8ff",
+  "panelBackgroundColor": "#e6f2ff"
+}

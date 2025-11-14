@@ -3,7 +3,8 @@
 #include <QWidget>
 #include <QColor>
 #include <QString>
-#include "../navigator/i_navigable_page.h"
+#include <QTranslator>
+#include <navigator/i_navigable_page.h>
 
 class ConfigManager;
 class QComboBox;
@@ -68,9 +69,11 @@ private:
     void connectSignals();
     void updateAccentColorButton();
     void updateDirectoryLabels();
+    void applyLanguage(const QString& languageCode);
     
     Ui::SettingsPage* ui;
     ConfigManager* m_configManager;
     QColor m_selectedAccentColor;
     bool m_settingsModified;
+    QTranslator* m_translator;
 };

@@ -1,0 +1,15 @@
+{
+  "background_image_path": "test.png",
+  "background_mode": "centered",
+  "button_normal_color": "#3498db",
+  "button_hover_color": "#5dade2",
+  "button_pressed_color": "#2980b9",
+  "font_primary_color": "#2c3e50",
+  "font_secondary_color": "#7f8c8d",
+  "font_disabled_color": "#bdc3c7",
+  "border_color": "#ecf0f1",
+  "border_style": "1px solid",
+  "extra_field_1": "unknown",
+  "extra_field_2": 12345,
+  "future_feature": {"nested": "value"}
+}

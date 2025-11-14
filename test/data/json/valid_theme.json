@@ -1,0 +1,12 @@
+{
+  "background_image_path": "C:/themes/wallpaper.png",
+  "background_mode": "stretched",
+  "button_normal_color": "#3498db",
+  "button_hover_color": "#5dade2",
+  "button_pressed_color": "#2980b9",
+  "font_primary_color": "#2c3e50",
+  "font_secondary_color": "#7f8c8d",
+  "font_disabled_color": "#bdc3c7",
+  "border_color": "#ecf0f1",
+  "border_style": "1px solid"
+}
