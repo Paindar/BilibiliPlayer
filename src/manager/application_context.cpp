@@ -8,6 +8,7 @@
 
 #include <playlist/playlist_manager.h>
 #include <config/config_manager.h>
+#include <ui/theme/theme_manager.h>
 #include <network/network_manager.h>
 #include <log/log_manager.h>
 #include <audio/audio_player_controller.h>
@@ -78,6 +79,9 @@ void ApplicationContext::initializePhase1(const QString& workspaceDir)
     
     // 2. EventBus - core event system
     initializeEventBus();
+    
+    // 3. ThemeManager - UI theming system
+    initializeThemeManager();
     m_currentPhase = 1;
     emit phaseInitialized(1);
     emit configLoaded();
@@ -127,6 +131,23 @@ void ApplicationContext::initializeEventBus()
     // EventBus uses a factory Create() returning shared_ptr
     m_eventBus = EventBus::Create();
     LOG_DEBUG("EventBus initialized");
+}
+
+void ApplicationContext::initializeThemeManager()
+{
+    LOG_DEBUG("Creating ThemeManager...");
+    m_themeManager = std::make_unique<ThemeManager>(this);
+    
+    // Load theme from config if available
+    if (m_configManager) {
+        QString theme = m_configManager->getTheme();
+        if (!theme.isEmpty()) {
+            m_themeManager->loadTheme(theme);
+            LOG_DEBUG("Loaded theme from config: {}", theme.toStdString());
+        }
+    }
+    
+    LOG_DEBUG("ThemeManager initialized");
 }
 
 // FileManager functionality is now integrated into ConfigManager

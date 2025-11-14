@@ -22,13 +22,15 @@ static const std::vector<int> mixinKeyEncTab = {
 
 using namespace network;
 
-BilibiliNetworkInterface::BilibiliNetworkInterface() 
+BilibiliPlatform::BilibiliPlatform() 
     : timeout_seconds_(10)
     , follow_location_(true)
     , platform_dir_("./") {
 }
 
-BilibiliNetworkInterface::~BilibiliNetworkInterface() {
+BilibiliPlatform::~BilibiliPlatform() {
+    exitFlag_.store(true);
+    // Clean up HTTP clients
     for (auto &pair : http_clients) {
         for (auto &entry : pair.second) {
             if (entry.client) {
@@ -42,7 +44,7 @@ BilibiliNetworkInterface::~BilibiliNetworkInterface() {
     }
 }
 
-bool network::BilibiliNetworkInterface::initializeDefaultConfig()
+bool network::BilibiliPlatform::initializeDefaultConfig()
 {
     std::scoped_lock lock(m_clientMutex_, m_wbiMutex_);
     // Phase 1 set heeaders
@@ -64,7 +66,7 @@ bool network::BilibiliNetworkInterface::initializeDefaultConfig()
 }
 
 // Configuration methods with cookie persistence
-bool BilibiliNetworkInterface::loadConfig(const std::string& config_file) {
+bool BilibiliPlatform::loadConfig(const std::string& config_file) {
     std::string config = platform_dir_ + '/' + (config_file.empty() ? "bilibili.json" : config_file);
     
     std::ifstream file(config);
@@ -111,7 +113,7 @@ bool BilibiliNetworkInterface::loadConfig(const std::string& config_file) {
     return false;
 }
 
-bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
+bool BilibiliPlatform::saveConfig(const std::string& config_file) {
     std::string config = platform_dir_ + '/' + (config_file.empty() ? "bilibili.json" : config_file);
     std::ofstream file(config);
     if (!file.is_open()) {
@@ -140,7 +142,7 @@ bool BilibiliNetworkInterface::saveConfig(const std::string& config_file) {
     return true;
 }
 
-bool BilibiliNetworkInterface::setPlatformDirectory(const std::string &platform_dir)
+bool BilibiliPlatform::setPlatformDirectory(const std::string &platform_dir)
 {
     std::scoped_lock lock(m_clientMutex_);
     if (std::filesystem::exists(platform_dir) && std::filesystem::is_directory(platform_dir)) {
@@ -150,23 +152,23 @@ bool BilibiliNetworkInterface::setPlatformDirectory(const std::string &platform_
     return false;
 }
 
-void BilibiliNetworkInterface::setTimeout(int timeout_sec) {
+void BilibiliPlatform::setTimeout(int timeout_sec) {
     std::scoped_lock lock(m_clientMutex_);
     timeout_seconds_ = timeout_sec;
 }
 
-void BilibiliNetworkInterface::setUserAgent(const std::string& user_agent) {
+void BilibiliPlatform::setUserAgent(const std::string& user_agent) {
     std::scoped_lock lock(m_clientMutex_);
     headers_["User-Agent"] = user_agent;
 }
 
-std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid(const std::string& bvid) {
+std::vector<BilibiliPageInfo> BilibiliPlatform::getPagesCid(const std::string& bvid) {
     std::scoped_lock lock(m_clientMutex_);
     return getPagesCid_unsafe(bvid);
 }
 
 /*********** Interface method *****************/
-std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitleOld(const std::string& title, int page) {
+std::vector<BilibiliVideoInfo> BilibiliPlatform::searchByTitleOld(const std::string& title, int page) {
     std::unordered_map<std::string, std::string> params = {
         {"search_type", "video"},
         {"keyword", title},
@@ -191,6 +193,7 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitleOld(const 
             return {};
         }
     }
+    
     std::vector<BilibiliVideoInfo> results;
     Json::Value root;
     Json::Reader reader;
@@ -213,36 +216,39 @@ std::vector<BilibiliVideoInfo> BilibiliNetworkInterface::searchByTitleOld(const 
     return results;
 }
 
-std::vector<BilibiliSearchResult> BilibiliNetworkInterface::searchByTitle(const std::string& title, int page) {
+std::vector<SearchResult> BilibiliPlatform::searchByTitle(const std::string& title, int page) {
     // Step 1: Search for videos by title (blocking)
     std::vector<BilibiliVideoInfo> videoResults = searchByTitleOld(title, page);
-    
+    if (exitFlag_.load()) return {};
+
     if (videoResults.empty()) {
         LOG_WARN("No video results found for title: {}", title);
         return {};
     }
-    
     // Step 2: For each video, get page info asynchronously
-    std::vector<std::future<std::vector<BilibiliSearchResult>>> pageFutures;
+    std::vector<std::future<std::vector<SearchResult>>> pageFutures;
     
     for (const auto& video : videoResults) {
         // Launch async task to get pages for this bvid
         auto future = std::async(std::launch::async, 
-            [this, video]() -> std::vector<BilibiliSearchResult> {
+            [self = this->shared_from_this(), video]() -> std::vector<SearchResult> {
             try {
-                std::scoped_lock lock(m_clientMutex_);
-                auto pages = getPagesCid_unsafe(video.bvid);
-                std::vector<BilibiliSearchResult> results;
+                if (self->exitFlag_.load()) return {};
+                std::scoped_lock lock(self->m_clientMutex_);
+                auto pages = self->getPagesCid_unsafe(video.bvid);
+                std::vector<SearchResult> results;
                 for (auto& page : pages) {
-                    results.emplace_back(BilibiliSearchResult{
-                        .title = video.title,
-                        .bvid = video.bvid,
-                        .author = video.author,
-                        .description = video.description,
-                        .cover = video.coverImg,
-                        .cid = page.cid,
-                        .partTitle = page.part,
-                        .duration = page.duration * 1000  // convert to milliseconds
+                    results.emplace_back(SearchResult{
+                        .title = QString("%1 - %2").arg(QString::fromStdString(video.title)).arg(QString::fromStdString(page.part)),
+                        .uploader = QString::fromStdString(video.author),
+                        .platform = PlatformType::Bilibili,
+                        .duration = page.duration * 1000,  // convert to milliseconds
+                        .coverUrl = QString::fromStdString(video.coverImg),
+                        // .coverImg = "", // to be filled by caller
+                        .description = QString::fromStdString(video.description),
+                        .interfaceData = QString("bvid=%1&cid=%2")
+                            .arg(QString::fromStdString(video.bvid))
+                            .arg(QString::number(page.cid))
                     });
                 }
                 return std::move(results);
@@ -256,7 +262,7 @@ std::vector<BilibiliSearchResult> BilibiliNetworkInterface::searchByTitle(const 
     }
     
     // Step 3: Collect all results and enrich page info with video metadata
-    std::vector<BilibiliSearchResult> allPages;
+    std::vector<SearchResult> allPages;
     
     for (auto& future : pageFutures) {
         try {
@@ -268,12 +274,12 @@ std::vector<BilibiliSearchResult> BilibiliNetworkInterface::searchByTitle(const 
     }
     
     LOG_INFO("Found {} total pages from {} videos for search: {}", 
-             allPages.size(), videoResults.size(), title);
+            allPages.size(), videoResults.size(), title);
     
     return allPages;
 }
 
-std::string network::BilibiliNetworkInterface::getAudioUrlByParams(const std::string &params)
+std::string network::BilibiliPlatform::getAudioUrlByParams(const std::string &params)
 {
     // Phase 1: Extract bvid and cid from params
     std::string bvid;
@@ -339,7 +345,7 @@ std::string network::BilibiliNetworkInterface::getAudioUrlByParams(const std::st
     return std::string();
 }
 
-uint64_t BilibiliNetworkInterface::getStreamBytesSize(const std::string &url)
+uint64_t BilibiliPlatform::getStreamBytesSize(const std::string &url)
 {
     // Parse the URL to extract host and path
     std::string host, path;
@@ -416,7 +422,7 @@ uint64_t BilibiliNetworkInterface::getStreamBytesSize(const std::string &url)
     return 0;
 }
 
-std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::string &url,
+std::future<bool> BilibiliPlatform::asyncDownloadStream(const std::string &url,
                                                                 std::function<bool(const char *, size_t)> content_receiver,
                                                                 std::function<bool(uint64_t, uint64_t)> progress_callback)
 {
@@ -426,24 +432,25 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
         LOG_ERROR("Failed to parse URL: {}", url);
         return std::async(std::launch::deferred, []() { return false; });
     }
-    return std::async(std::launch::async, [this, host, path, content_receiver, progress_callback]() -> bool {
+    return std::async(std::launch::async, [self = this->shared_from_this(), host, path, content_receiver, progress_callback]() -> bool {
         try {
+            if (self->exitFlag_.load()) return false;
             // Create a new client for this host (each thread needs its own client)
             std::shared_ptr<httplib::Client> stream_client;
             httplib::Headers headers;
 
             // Borrow client and build headers while holding the client mutex
             {
-                std::scoped_lock lock(m_clientMutex_);
-                stream_client = borrowHttpClient_unsafe(host);
+                std::scoped_lock lock(self->m_clientMutex_);
+                stream_client = self->borrowHttpClient_unsafe(host);
                 if (!stream_client) {
                     throw std::runtime_error("Failed to borrow HTTP client for streaming.");
                 }
-                headers = getHttplibHeaders_unsafe(host, path);
+                headers = self->getHttplibHeaders_unsafe(host, path);
             }
 
             auto res = stream_client->Get(path, headers, content_receiver, progress_callback);
-            returnHttpClient_unsafe(stream_client);
+            self->returnHttpClient_unsafe(stream_client);
 
             if (!res) {
                 LOG_ERROR("Failed to perform async streaming from: {}/{}.", host, path);
@@ -464,7 +471,7 @@ std::future<bool> BilibiliNetworkInterface::asyncDownloadStream(const std::strin
 }
 
 /********* Private method *********/
-std::string BilibiliNetworkInterface::getMixinKey(const std::string& orig) const {
+std::string BilibiliPlatform::getMixinKey(const std::string& orig) const {
     std::string result;
     for (int i : mixinKeyEncTab) {
         if (i < orig.length()) {
@@ -474,13 +481,13 @@ std::string BilibiliNetworkInterface::getMixinKey(const std::string& orig) const
     return result.substr(0, 32);
 }
 
-std::string BilibiliNetworkInterface::getCurrentTimestamp() const {
+std::string BilibiliPlatform::getCurrentTimestamp() const {
     auto now = std::chrono::system_clock::now();
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
     return std::to_string(timestamp);
 }
 
-bool BilibiliNetworkInterface::needsWbiRefresh_unsafe() const {
+bool BilibiliPlatform::needsWbiRefresh_unsafe() const {
     if (wbi_keys_.img_key.empty() || wbi_keys_.sub_key.empty()) {
         return true;
     }
@@ -490,7 +497,7 @@ bool BilibiliNetworkInterface::needsWbiRefresh_unsafe() const {
     return diff.count() >= 24; // Refresh every 24 hours
 }
 
-bool BilibiliNetworkInterface::encWbi_unsafe(std::unordered_map<std::string, std::string> &params) const
+bool BilibiliPlatform::encWbi_unsafe(std::unordered_map<std::string, std::string> &params) const
 {
     BiliWbiKeys wbi_keys_copy = wbi_keys_;
     if (wbi_keys_copy.img_key.empty() || wbi_keys_copy.sub_key.empty()) {
@@ -520,7 +527,7 @@ bool BilibiliNetworkInterface::encWbi_unsafe(std::unordered_map<std::string, std
     return true;
 }
 
-bool BilibiliNetworkInterface::refreshWbiKeys_unsafe() {
+bool BilibiliPlatform::refreshWbiKeys_unsafe() {
     std::shared_ptr<httplib::Client> http_client;
     httplib::Headers headers;
     {
@@ -566,7 +573,7 @@ bool BilibiliNetworkInterface::refreshWbiKeys_unsafe() {
     return false;
 }
 
-const httplib::Headers& network::BilibiliNetworkInterface::getDefaultHeaders() const
+const httplib::Headers& network::BilibiliPlatform::getDefaultHeaders() const
 {
     const static httplib::Headers headers({
         {"Accept", "application/json, text/plain, */*"},
@@ -581,7 +588,7 @@ const httplib::Headers& network::BilibiliNetworkInterface::getDefaultHeaders() c
 }
 
 // Helper method implementations
-httplib::Headers BilibiliNetworkInterface::getHttplibHeaders_unsafe(const std::string& host, const std::string& path) const {
+httplib::Headers BilibiliPlatform::getHttplibHeaders_unsafe(const std::string& host, const std::string& path) const {
     httplib::Headers headers;
     for (const auto& pair : headers_) {
         headers.emplace(pair.first, pair.second);
@@ -632,7 +639,7 @@ httplib::Headers BilibiliNetworkInterface::getHttplibHeaders_unsafe(const std::s
     return headers;
 }
 
-bool BilibiliNetworkInterface::initializeCookies_unsafe() {
+bool BilibiliPlatform::initializeCookies_unsafe() {
     // Create a dedicated client for cookie initialization
     std::shared_ptr<httplib::Client> http_client = borrowHttpClient_unsafe("https://www.bilibili.com");
     if (!http_client) {
@@ -729,7 +736,7 @@ bool BilibiliNetworkInterface::initializeCookies_unsafe() {
     return true;
 }
 
-std::shared_ptr<httplib::Client> network::BilibiliNetworkInterface::borrowHttpClient_unsafe(const std::string &host)
+std::shared_ptr<httplib::Client> network::BilibiliPlatform::borrowHttpClient_unsafe(const std::string &host)
 {
     // Find or create vector for this host
     auto &vec = http_clients[host];
@@ -751,7 +758,7 @@ std::shared_ptr<httplib::Client> network::BilibiliNetworkInterface::borrowHttpCl
     return new_client;
 }
 
-void network::BilibiliNetworkInterface::returnHttpClient_unsafe(std::shared_ptr<httplib::Client> client)
+void network::BilibiliPlatform::returnHttpClient_unsafe(std::shared_ptr<httplib::Client> client)
 {
     // Search all host buckets for the client
     for (auto &pair : http_clients) {
@@ -767,7 +774,7 @@ void network::BilibiliNetworkInterface::returnHttpClient_unsafe(std::shared_ptr<
     http_clients[std::string()].push_back({std::string(), client, true});
 }
 
-bool BilibiliNetworkInterface::sendGetRequest_unsafe(const std::string& host, 
+bool BilibiliPlatform::sendGetRequest_unsafe(const std::string& host, 
                                                 const std::string& path,
                                                const std::unordered_map<std::string, std::string>& params,
                                                std::string& response) 
@@ -790,7 +797,7 @@ bool BilibiliNetworkInterface::sendGetRequest_unsafe(const std::string& host,
     return false;
 }
 
-std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid_unsafe(const std::string& bvid) {
+std::vector<BilibiliPageInfo> BilibiliPlatform::getPagesCid_unsafe(const std::string& bvid) {
     std::vector<BilibiliPageInfo> pages;
 
     httplib::Params params;
@@ -821,7 +828,7 @@ std::vector<BilibiliPageInfo> BilibiliNetworkInterface::getPagesCid_unsafe(const
     return pages;
 }
 
-void BilibiliNetworkInterface::updateClientCookies_unsafe() {
+void BilibiliPlatform::updateClientCookies_unsafe() {
     // Since httplib 0.15.3 doesn't have built-in cookie store management,
     // we manually add cookies to each request via headers
     // Update the Cookie header in our headers map for consistency
@@ -832,7 +839,7 @@ void BilibiliNetworkInterface::updateClientCookies_unsafe() {
 }
 
 /******* Configuration related *************/
-bool BilibiliNetworkInterface::loadHeaders_unsafe(const Json::Value &jsonObj)
+bool BilibiliPlatform::loadHeaders_unsafe(const Json::Value &jsonObj)
 {
     try {
         if (jsonObj.isObject()) {
@@ -847,7 +854,7 @@ bool BilibiliNetworkInterface::loadHeaders_unsafe(const Json::Value &jsonObj)
     return false;
 }
 
-bool BilibiliNetworkInterface::saveHeaders_unsafe(Json::Value &jsonObj) const
+bool BilibiliPlatform::saveHeaders_unsafe(Json::Value &jsonObj) const
 {
     try {
         // Ensure the jsonObj is an object type
@@ -865,7 +872,7 @@ bool BilibiliNetworkInterface::saveHeaders_unsafe(Json::Value &jsonObj) const
     return false;
 }
 
-bool BilibiliNetworkInterface::loadCookies_unsafe(const Json::Value& jsonObj) {
+bool BilibiliPlatform::loadCookies_unsafe(const Json::Value& jsonObj) {
     try {
         // Support legacy format (object of name->value) and new structured format
         // (array of cookie objects).
@@ -911,7 +918,7 @@ bool BilibiliNetworkInterface::loadCookies_unsafe(const Json::Value& jsonObj) {
     return false;
 }
 
-bool BilibiliNetworkInterface::saveCookies_unsafe(Json::Value& jsonObj) const {
+bool BilibiliPlatform::saveCookies_unsafe(Json::Value& jsonObj) const {
     try {
         // Ensure the jsonObj is an object type
         if (!jsonObj.isObject()) {
@@ -942,7 +949,7 @@ bool BilibiliNetworkInterface::saveCookies_unsafe(Json::Value& jsonObj) const {
     return false;
 }
 
-bool network::BilibiliNetworkInterface::loadWbiKeys_unsafe(const Json::Value &jsonObj)
+bool network::BilibiliPlatform::loadWbiKeys_unsafe(const Json::Value &jsonObj)
 {
     if (jsonObj.isObject()) {
         wbi_keys_.img_key = jsonObj.get("img_key", "").asString();
@@ -961,7 +968,7 @@ bool network::BilibiliNetworkInterface::loadWbiKeys_unsafe(const Json::Value &js
     return false;
 }
 
-bool network::BilibiliNetworkInterface::saveWbiKeys_unsafe(Json::Value &jsonObj) const
+bool network::BilibiliPlatform::saveWbiKeys_unsafe(Json::Value &jsonObj) const
 {
     // Ensure the jsonObj is an object type
     if (!jsonObj.isObject()) {
@@ -976,7 +983,7 @@ bool network::BilibiliNetworkInterface::saveWbiKeys_unsafe(Json::Value &jsonObj)
 }
 
 #ifdef UNIT_TEST
-void BilibiliNetworkInterface::test_create_clients(const std::string& host, size_t n) {
+void network::BilibiliPlatform::test_create_clients(const std::string& host, size_t n) {
     std::scoped_lock lock(m_clientMutex_);
     for (size_t i = 0; i < n; ++i) {
         auto c = borrowHttpClient_unsafe(host);
@@ -985,30 +992,30 @@ void BilibiliNetworkInterface::test_create_clients(const std::string& host, size
     }
 }
 
-size_t BilibiliNetworkInterface::test_pool_size(const std::string& host) const {
+size_t network::BilibiliPlatform::test_pool_size(const std::string& host) const {
     std::scoped_lock lock(m_clientMutex_);
     auto it = http_clients.find(host);
     if (it == http_clients.end()) return 0;
     return it->second.size();
 }
 
-bool BilibiliNetworkInterface::test_concurrent_borrow_return(const std::string& host, size_t thread_count, size_t iter_count) {
+bool network::BilibiliPlatform::test_concurrent_borrow_return(const std::string& host, size_t thread_count, size_t iter_count) {
     try {
         // Ensure at least one client exists
         test_create_clients(host, 1);
 
         std::vector<std::thread> threads;
         for (size_t t = 0; t < thread_count; ++t) {
-            threads.emplace_back([this, &host, iter_count]() {
+            threads.emplace_back([self = this->shared_from_this(), host, iter_count]() {
                 for (size_t i = 0; i < iter_count; ++i) {
                     std::shared_ptr<httplib::Client> c;
                     {
-                        std::scoped_lock lock(m_clientMutex_);
-                        c = borrowHttpClient_unsafe(host);
+                        std::scoped_lock lock(self->m_clientMutex_);
+                        c = self->borrowHttpClient_unsafe(host);
                     }
                     // Simulate short work
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    returnHttpClient_unsafe(c);
+                    self->returnHttpClient_unsafe(c);
                 }
             });
         }
@@ -1039,7 +1046,7 @@ static std::string canonicalize_host(const std::string &host_with_scheme) {
 }
 
 #ifdef UNIT_TEST
-void BilibiliNetworkInterface::test_add_cookie_from_set_cookie(const std::string& set_cookie_line, const std::string& origin_host) {
+void network::BilibiliPlatform::test_add_cookie_from_set_cookie(const std::string& set_cookie_line, const std::string& origin_host) {
     std::scoped_lock lock(m_clientMutex_);
     // Reuse parsing logic by constructing a fake response header
     std::string header = set_cookie_line;
@@ -1097,7 +1104,7 @@ void BilibiliNetworkInterface::test_add_cookie_from_set_cookie(const std::string
     cookies_.push_back(std::move(c));
 }
 
-httplib::Headers BilibiliNetworkInterface::test_get_headers_for_url(const std::string& url) {
+httplib::Headers BilibiliPlatform::test_get_headers_for_url(const std::string& url) {
     std::string host, path;
     if (!parseUrl(url, host, path)) return httplib::Headers();
     std::scoped_lock lock(m_clientMutex_);
@@ -1106,7 +1113,7 @@ httplib::Headers BilibiliNetworkInterface::test_get_headers_for_url(const std::s
 #endif
 
 // Utility method implementations
-bool BilibiliNetworkInterface::parseUrl(const std::string& url, std::string& host, std::string& path) const {
+bool BilibiliPlatform::parseUrl(const std::string& url, std::string& host, std::string& path) const {
     // Find the scheme (http:// or https://)
     size_t scheme_end = url.find("://");
     if (scheme_end == std::string::npos) {

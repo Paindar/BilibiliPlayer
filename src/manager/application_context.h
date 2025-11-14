@@ -8,6 +8,7 @@
 // Forward declarations
 class PlaylistManager;
 class ConfigManager;
+class ThemeManager;
 namespace audio { class AudioPlayerController; }
 class EventBus;
 
@@ -38,6 +39,7 @@ public:
     // Manager access (returns nullptr if not yet initialized)
     PlaylistManager* playlistManager() const { return m_playlistManager.get(); }
     ConfigManager* configManager() const { return m_configManager.get(); }
+    ThemeManager* themeManager() const { return m_themeManager.get(); }
     audio::AudioPlayerController* audioPlayerController() const { return m_audioPlayerController.get(); }
     network::NetworkManager* networkManager() const { return m_networkManager.get(); }
     EventBus* eventBus() const { return m_eventBus.get(); }
@@ -68,6 +70,7 @@ private:
     // Phase-based initialization
     void initializeConfigManager(const QString& workspaceDir);
     void initializeEventBus();
+    void initializeThemeManager();
     void initializeNetworkManager();
     void initializePlaylistManager();
     void initializeAudioPlayerController();
@@ -78,6 +81,7 @@ private:
     // Smart pointers for automatic cleanup
     std::unique_ptr<ConfigManager> m_configManager;
     std::unique_ptr<EventBus> m_eventBus;
+    std::unique_ptr<ThemeManager> m_themeManager;
     std::unique_ptr<PlaylistManager> m_playlistManager;
     std::unique_ptr<audio::AudioPlayerController> m_audioPlayerController;
     std::unique_ptr<network::NetworkManager> m_networkManager;
@@ -90,6 +94,7 @@ private:
 #define APP_CONTEXT ApplicationContext::instance()
 #define PLAYLIST_MANAGER APP_CONTEXT.playlistManager()
 #define CONFIG_MANAGER APP_CONTEXT.configManager()
+#define THEME_MANAGER APP_CONTEXT.themeManager()
 #define AUDIO_PLAYER_CONTROLLER APP_CONTEXT.audioPlayerController()
 #define NETWORK_MANAGER APP_CONTEXT.networkManager()
 #define EVENT_BUS APP_CONTEXT.eventBus()

@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <log/log_manager.h>
 #include <audio/audio_player_controller.h>
+#include <network/platform/i_platform.h>
 #include <network/network_manager.h>
 #include <playlist/playlist_manager.h>
 #include <manager/application_context.h>
@@ -52,7 +53,7 @@ SearchResultItemWidget::SearchResultItemWidget(const network::SearchResult& resu
     m_uploaderLabel->setStyleSheet("QLabel { font-size: 12px; color: #aaaaaa; }");
     QString platformName;
     switch (result.platform) {
-        case network::SupportInterface::Bilibili:
+        case network::PlatformType::Bilibili:
             platformName = "Bilibili";
             break;
         default:
@@ -97,7 +98,7 @@ void SearchResultItemWidget::updateResult(const network::SearchResult& result)
     
     QString platformName;
     switch (result.platform) {
-        case network::SupportInterface::Bilibili:
+        case network::PlatformType::Bilibili:
             platformName = "Bilibili";
             break;
         default:
@@ -231,10 +232,10 @@ void SearchPage::performSearch()
     
     if (m_currentScope == SearchScope::Bilibili) {
         // Use Bilibili search only
-        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::SupportInterface::Bilibili, 20);
+        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::PlatformType::Bilibili, 20);
     } else {
         // For "All" scope, search all available sources
-        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::SupportInterface::All, 20);
+        NETWORK_MANAGER->executeMultiSourceSearch(keyword, network::PlatformType::All, 20);
     }
 }
 
@@ -297,10 +298,10 @@ void SearchPage::setupScopeMenu()
     )");
 }
 
-QString SearchPage::convertPlatformEnumToString(network::SupportInterface platform) const
+QString SearchPage::convertPlatformEnumToString(network::PlatformType platform) const
 {
     switch (platform) {
-    case network::SupportInterface::Bilibili:
+    case network::PlatformType::Bilibili:
         return "Bilibili";
     default:
         return "未知";
@@ -360,7 +361,7 @@ void SearchPage::onSearchProgress(const QString& keyword, const QList<network::S
                 resultWidget->setCoverImage(pix);
             } else {
                 // Download cover asynchronously
-                auto future = NETWORK_MANAGER->downloadAsync(network::SupportInterface::Bilibili,
+                auto future = NETWORK_MANAGER->downloadAsync(network::PlatformType::Bilibili,
                                                              result.coverUrl,
                                                              coverPathQt);
                 
@@ -421,7 +422,7 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
     QString coverPath = CONFIG_MANAGER->getCoverCacheDirectory() + "/" + result.coverImg;
     if (!QFile::exists(coverPath)) {
         LOG_INFO("Downloading cover image: {} -> {}", result.coverUrl.toStdString(), coverPath.toStdString());
-        NETWORK_MANAGER->downloadAsync(network::SupportInterface::Bilibili,
+        NETWORK_MANAGER->downloadAsync(network::PlatformType::Bilibili,
                                            result.coverUrl,
                                            coverPath);
     }

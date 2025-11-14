@@ -82,7 +82,6 @@ signals:
     void currentPlaylistChanged(const QUuid& playlistId);
 
 private slots:
-    void onConfigChanged();
     void onAutoSaveTimer();
     
 private:

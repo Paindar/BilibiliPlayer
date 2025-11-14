@@ -6,7 +6,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <navigator/i_navigable_page.h>
-#include <network/network_manager.h>
+#include <network/platform/i_platform.h>
 #include <ui/util/elided_label.h>
 
 QT_BEGIN_NAMESPACE
@@ -80,7 +80,7 @@ private:
     void showEmptyState();
     void showResults();
     void setupScopeMenu();
-    QString convertPlatformEnumToString(network::SupportInterface platform) const;
+    QString convertPlatformEnumToString(network::PlatformType platform) const;
     
 private:
     Ui_SearchPage *ui;

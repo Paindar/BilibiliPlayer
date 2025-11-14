@@ -231,7 +231,7 @@ void AudioPlayerController::playCurrentSongUnsafe()
     try {
         if (useStreaming) {
             // Acquire real-time stream via NetworkManager
-            auto platform = static_cast<network::SupportInterface>(song.platform);
+            auto platform = static_cast<network::PlatformType>(song.platform);
 
             // Start both requests: expected size first (critical), and stream acquisition
             auto sizeFuture = NETWORK_MANAGER->getStreamSizeByParamsAsync(platform, song.args);

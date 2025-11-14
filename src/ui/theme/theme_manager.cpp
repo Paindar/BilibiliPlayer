@@ -1,11 +1,9 @@
 #include "theme_manager.h"
 #include <log/log_manager.h>
-#include <config/config_manager.h>
 #include <json/json.h>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
-#include <QApplication>
 #include <fstream>
 #include <sstream>
 
@@ -285,14 +283,9 @@ void ThemeManager::applyCurrentTheme()
 {
     QString styleSheet = generateStyleSheet(m_currentTheme);
     
-    // Apply stylesheet to QApplication (not QCoreApplication)
-    if (auto* app = qobject_cast<QApplication*>(QApplication::instance())) {
-        app->setStyleSheet(styleSheet);
-        emit themeApplied(m_currentTheme);
-        LOG_INFO("Applied theme: {}", m_currentTheme.name.toStdString());
-    } else {
-        LOG_WARN("Cannot apply theme: QApplication instance not available");
-    }
+    // Emit signal to notify subscribers (MainWindow or other UI components) to apply the theme
+    emit themeApplied(m_currentTheme);
+    LOG_INFO("Theme applied signal emitted: {}", m_currentTheme.name.toStdString());
 }
 
 QString ThemeManager::generateStyleSheet(const Theme& theme) const

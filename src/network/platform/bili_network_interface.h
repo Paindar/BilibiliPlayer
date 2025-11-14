@@ -1,6 +1,6 @@
 #pragma once
 
-#include "i_network_platform_interface.h"
+#include "i_platform.h"
 #include <unordered_map>
 #include <string>
 #include <memory>
@@ -11,6 +11,7 @@
 #include <httplib.h>
 #include <json/json.h>
 #include <mutex>
+#include <atomic>
 #include <optional>
 
 namespace network
@@ -42,14 +43,14 @@ namespace network
         int duration;
     };
 
-    class BilibiliNetworkInterface : public INetworkPlatformInterface
+    class BilibiliPlatform : public IPlatform, public std::enable_shared_from_this<BilibiliPlatform>
     {
     public:
         // Constructor/Destructor
-        BilibiliNetworkInterface();
-        ~BilibiliNetworkInterface() override;
+        explicit BilibiliPlatform();
+        virtual ~BilibiliPlatform() override;
         
-        // ========== INetworkPlatformInterface Implementation ==========
+        // ========== IPlatform Implementation ==========
         bool initializeDefaultConfig() override;
         bool loadConfig(const std::string& config_file = "bilibili.json") override;
         bool saveConfig(const std::string& config_file = "bilibili.json") override;
@@ -57,6 +58,7 @@ namespace network
         void setTimeout(int timeout_sec) override;
         void setUserAgent(const std::string& user_agent) override;
         
+        std::vector<SearchResult> searchByTitle(const std::string& title, int page = 1) override;
         std::string getAudioUrlByParams(const std::string& params) override;
         uint64_t getStreamBytesSize(const std::string& url) override;
         std::future<bool> asyncDownloadStream(
@@ -66,7 +68,6 @@ namespace network
         
     public: // Platform-specific methods
         // Search videos by title and get page info (platform-specific return type)
-        std::vector<BilibiliSearchResult> searchByTitle(const std::string& title, int page = 1);
 
 #ifdef UNIT_TEST
     // Test helpers (only present when UNIT_TEST is defined at compile time)
@@ -166,5 +167,8 @@ namespace network
         std::string platform_dir_; // where to load/save config files
         int timeout_seconds_; // request timeout in seconds
         bool follow_location_; 
+
+        // Single shutdown/exit flag for async tasks to observe object lifetime
+        std::atomic<bool> exitFlag_{false};
     };
 } // namespace network

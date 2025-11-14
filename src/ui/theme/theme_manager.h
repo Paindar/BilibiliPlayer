@@ -90,7 +90,7 @@ public:
     
 signals:
     void themeChanged(const QString& themeName);
-    void themeApplied(const Theme& theme);
+    void themeApplied(const Theme& theme);  // Signal emitted when theme is ready to apply
     
 private:
     Theme m_currentTheme;

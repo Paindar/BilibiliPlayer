@@ -103,7 +103,6 @@ signals:
     void themeChanged(const QString& theme);
     void languageChanged(const QString& language);
     void accentColorChanged(const QColor& color);
-    void pathsChanged();
     void networkSettingsChanged();
     void playlistDirectoryChanged(const QString& relativePath);
     

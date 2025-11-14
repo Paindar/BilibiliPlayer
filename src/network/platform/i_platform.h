@@ -5,12 +5,64 @@
 #include <future>
 #include <functional>
 #include <cstdint>
+#include <QString>
 
 namespace network
 {
     /**
+     * @brief Platform type enumeration
+     */
+    enum PlatformType {
+        Unknown = 0x0,
+        Bilibili = 0x1,
+        YouTube = 0x2,
+        Local = 0x4,
+        // Future platforms can be added here
+        All = 0x7FFFFFFF
+    };
+    const static std::string getPlatformName(PlatformType type) {
+        switch (type) {
+            case Bilibili:
+                return "Bilibili";
+            case YouTube:
+                return "YouTube";
+            case Local:
+                return "Local";
+            default:
+                return "Unknown";
+        }
+    }
+
+    const static PlatformType getPlatformTypeFromName(const std::string& name) {
+        if (name == "Bilibili") {
+            return Bilibili;
+        } else if (name == "YouTube") {
+            return YouTube;
+        } else if (name == "Local") {
+            return Local;
+        } else {
+            return Unknown;
+        }
+    }
+
+    /**
+     * @brief Search result structure
+     */
+    struct SearchResult {
+        QString title;
+        QString uploader;
+        PlatformType platform;
+        int duration;
+        QString coverUrl;       // Network URL for cover image
+        QString coverImg;       // Filename for cover (not including tmp/cover/ path)
+        QString description;
+
+        // Reserved for raw interface data storage
+        QString interfaceData;
+    };
+    /**
      * @brief Abstract base interface for platform-specific network operations
-     * 
+     *
      * This interface defines the contract that all platform implementations
      * (Bilibili, YouTube, etc.) must follow. It provides methods for:
      * - Configuration management
@@ -19,13 +71,13 @@ namespace network
      * - Stream size queries
      * - Asynchronous streaming downloads
      */
-    class INetworkPlatformInterface
+    class IPlatform
     {
     public:
-        virtual ~INetworkPlatformInterface() = default;
+        virtual ~IPlatform() = default;
 
         // ========== Configuration Methods ==========
-        
+
         /**
          * @brief Initialize with default configuration
          * @return true if initialization successful, false otherwise
@@ -71,6 +123,15 @@ namespace network
         // Each concrete implementation provides its own searchByTitle method,
         // and NetworkManager converts results to network::SearchResult.
 
+        // ========== Search By Title ==========
+        /**
+         * @brief Search videos by title (platform-specific return type), this method
+         *  doesn't need to be async as NetworkManager will handle threading.
+         * @param title Search keyword
+         * @param page Page number for paginated results
+         * @return Vector of platform-specific video info structures
+         */
+        virtual std::vector<SearchResult> searchByTitle(const std::string& title, int page) = 0;
         // ========== Stream URL Methods ==========
 
         /**

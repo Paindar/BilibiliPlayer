@@ -10,42 +10,19 @@
 #include <thread>
 #include <unordered_map>
 #include <stream/realtime_pipe.hpp>
-#include "i_network_platform_interface.h"
+#include "platform/i_platform.h"
+#include "platform/bili_network_interface.h"
 
 // Forward declarations for platform-specific types
 namespace network
 {
-    class BilibiliNetworkInterface;
+    class BilibiliPlatform;
 }
-
-namespace network
-{
-    enum SupportInterface {
-        Bilibili = 0x1,
-        // Future platforms can be added here
-        All = 0xFFFFFFFF
-    };
-
-    // Search result structure
-    struct SearchResult {
-        QString title;
-        QString uploader;
-        SupportInterface platform;
-        int duration;
-        QString coverUrl;       // Network URL for cover image
-        QString coverImg;       // Filename for cover (not including tmp/cover/ path)
-        QString description;
-
-        // Reserved for raw interface data storage
-        QString interfaceData;
-    };
-}
-
 Q_DECLARE_METATYPE(network::SearchResult)
 
 namespace network
 {
-    class NetworkManager : public QObject
+    class NetworkManager : public QObject, public std::enable_shared_from_this<NetworkManager>
     {
         Q_OBJECT
         
@@ -61,9 +38,9 @@ namespace network
         void executeMultiSourceSearch(const QString& keyword, uint selectedInterface, int maxResults = 20);
         void cancelAllSearches();
         // Convenience: get size by interface params (e.g., bvid/cid) instead of direct URL
-        std::future<uint64_t> getStreamSizeByParamsAsync(SupportInterface platform, const QString& params);
-        std::shared_future<std::shared_ptr<std::istream>> getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath="");
-        std::shared_future<void> downloadAsync(SupportInterface platform, const QString& url, const QString& filepath);
+        std::future<uint64_t> getStreamSizeByParamsAsync(PlatformType platform, const QString& params);
+        std::shared_future<std::shared_ptr<std::istream>> getAudioStreamAsync(PlatformType platform, const QString& params, const QString& savepath="");
+        std::shared_future<void> downloadAsync(PlatformType platform, const QString& url, const QString& filepath);
         
         void setRequestTimeout(int timeoutMs) { m_requestTimeout = timeoutMs; }
         int getRequestTimeout() const { return m_requestTimeout; }
@@ -87,11 +64,12 @@ namespace network
         std::future<void> monitorSearchFuturesWithCV(const QString& keyword, std::vector<std::future<void>>&& futures);
         std::string Seconds2HMS(int totalSeconds);
         bool cancelDownload(const std::shared_ptr<std::atomic<bool>>& token);
-        bool checkPlatformStatus(SupportInterface platform);
+        bool checkPlatformStatus(PlatformType platform);
     
     private:    
-        std::unique_ptr<BilibiliNetworkInterface> m_biliInterface;
+        std::shared_ptr<BilibiliPlatform> m_biliInterface;
         std::atomic<bool> m_cancelFlag;
+        std::atomic<bool> m_exitFlag{false};
         int m_requestTimeout = 10000; // 10 seconds
         bool m_configured = false;
         // Background thread management for streaming/watchers

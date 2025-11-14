@@ -69,7 +69,8 @@ FFmpegStreamDecoder::~FFmpegStreamDecoder()
         // avio_context_free will free the internal buffer if one was
         // provided to avio_alloc_context. To avoid double-freeing the
         // same buffer, clear our pointer after freeing the context.
-        avio_context_free(&avio_ctx_);
+        av_freep(&avio_ctx_->buffer);   // free your buffer
+        av_freep(&avio_ctx_);           // free AVIOContext
         avio_buffer_ = nullptr;
     } else if (avio_buffer_) {
         // If we created a buffer but never attached an AVIO context,
@@ -659,8 +660,8 @@ bool FFmpegStreamDecoder::setupCustomIO() {
         LOG_ERROR("Failed to allocate format context.");
         return false;
     }
-    
     format_ctx_->pb = avio_ctx_;
+    format_ctx_->flags |= AVFMT_FLAG_CUSTOM_IO;
     return true;
 }
 } // namespace audio

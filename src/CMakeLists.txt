@@ -45,10 +45,13 @@ set(PROJECT_SOURCES
     event/event_bus.hpp
     
     # Network components
-    network/bili_network_interface.cpp
-    network/bili_network_interface.h
     network/network_manager.cpp
     network/network_manager.h
+    network/platform/bili_network_interface.cpp
+    network/platform/bili_network_interface.h
+    
+    # Network platform abstraction
+    network/platform/i_platform.h
     
     # Audio components
     audio/ffmpeg_decoder.cpp

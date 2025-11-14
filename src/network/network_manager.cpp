@@ -1,5 +1,6 @@
 #include "network_manager.h"
-#include "bili_network_interface.h"
+#include "platform/i_platform.h"
+#include "platform/bili_network_interface.h"
 #include <log/log_manager.h>
 #include <future>
 #include <thread>
@@ -10,6 +11,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <fmt/format.h>
+#include <util/md5.h>
 
 namespace network
 {
@@ -17,13 +19,16 @@ namespace network
         : QObject(nullptr)
         , m_configured(false)
     {
-        // Initialize BilibiliNetworkInterface
-        m_biliInterface = std::make_unique<BilibiliNetworkInterface>();
+        // Initialize BilibiliNetworkInterface (use shared_ptr so platform can shared_from_this)
+        m_biliInterface = std::make_shared<BilibiliPlatform>();
         LOG_DEBUG("NetworkManager created");
     }
     
     NetworkManager::~NetworkManager()
     {
+        // Signal exit to any running async tasks
+        m_exitFlag.store(true);
+
         // Signal cancel for searches
         cancelAllSearches();
 
@@ -124,16 +129,21 @@ namespace network
         std::vector<std::future<void>> searchFutures;
         
         // Launch Bilibili search if requested
-        if (selectedInterface & SupportInterface::Bilibili) {
-            auto bilibiliFuture = std::async(std::launch::async, [this, keyword, maxResults]() {
+        if (selectedInterface & PlatformType::Bilibili) {
+            auto bilibiliFuture = std::async(std::launch::async, [self = this->shared_from_this(), keyword, maxResults]() {
                 try {
-                    auto biliResults = performBilibiliSearchAsync(keyword, maxResults, m_cancelFlag).get();
-                    if (!m_cancelFlag) {
-                        emit searchProgress(keyword, biliResults);
+                    if (self->m_exitFlag.load()) return;
+                    auto biliResults = self->performBilibiliSearchAsync(keyword, maxResults, self->m_cancelFlag).get();
+                    if (!self->m_cancelFlag.load()) {
+                        QMetaObject::invokeMethod(self.get(), [self, keyword, biliResults]() {
+                            emit self->searchProgress(keyword, biliResults);
+                        }, Qt::QueuedConnection);
                     }
                 } catch (const std::exception& e) {
-                    if (!m_cancelFlag) {
-                        emit searchFailed(keyword, QString("Bilibili search failed: %1").arg(e.what()));
+                    if (!self->m_cancelFlag.load()) {
+                        QMetaObject::invokeMethod(self.get(), [self, keyword, e]() {
+                            emit self->searchFailed(keyword, QString("Bilibili search failed: %1").arg(e.what()));
+                        }, Qt::QueuedConnection);
                     }
                 }
             });
@@ -153,7 +163,7 @@ namespace network
         m_cancelFlag = true;
     }
 
-    std::future<uint64_t> NetworkManager::getStreamSizeByParamsAsync(SupportInterface platform, const QString &params)
+    std::future<uint64_t> NetworkManager::getStreamSizeByParamsAsync(PlatformType platform, const QString &params)
     {
         if (checkPlatformStatus(platform) == false) {
             return std::async(std::launch::async, [platform, params]() -> uint64_t {
@@ -165,15 +175,16 @@ namespace network
             });
         }
         switch (platform) {
-            case SupportInterface::Bilibili:
-                return std::async(std::launch::async, [this, params]() -> uint64_t {
+            case PlatformType::Bilibili:
+                return std::async(std::launch::async, [self = this->shared_from_this(), params]() -> uint64_t {
                     try {
-                        std::string url = m_biliInterface->getAudioUrlByParams(params.toStdString());
+                        if (self->m_exitFlag.load()) return 0;
+                        std::string url = self->m_biliInterface->getAudioUrlByParams(params.toStdString());
                         if (url.empty()) {
                             LOG_ERROR("Failed to get audio URL from parameters for stream size query");
                             return 0;
                         }
-                        return m_biliInterface->getStreamBytesSize(url);
+                        return self->m_biliInterface->getStreamBytesSize(url);
                     } catch (const std::exception& e) {
                         LOG_ERROR("Bilibili stream size (by params) error: {}", e.what());
                         throw; // Re-throw to be handled by caller
@@ -187,7 +198,7 @@ namespace network
         }
     }
 
-    std::shared_future<void> NetworkManager::downloadAsync(SupportInterface platform, const QString &url, const QString &filepath)
+    std::shared_future<void> NetworkManager::downloadAsync(PlatformType platform, const QString &url, const QString &filepath)
     {
         if (checkPlatformStatus(platform) == false) {
             return std::async(std::launch::async, [platform, url, filepath]() -> void {
@@ -223,8 +234,12 @@ namespace network
         }
         
         switch (platform) {
-            case SupportInterface::Bilibili:
-                return std::async(std::launch::async, [this, url, filepath, downloadKey, promisePtr]() -> void {
+            case PlatformType::Bilibili:
+                return std::async(std::launch::async, [self = this->shared_from_this(), url, filepath, downloadKey, promisePtr]() -> void {
+                    if (self->m_exitFlag.load()) {
+                        promisePtr->set_exception(std::make_exception_ptr(std::runtime_error("NetworkManager is exiting")));
+                        return;
+                    }
                     try {
                         // Write to temporary .part file first
                         const QString tempPath = filepath + ".part";
@@ -237,7 +252,7 @@ namespace network
                         }
                         
                         // Use asyncDownloadStream with a callback that writes to file
-                        auto download_future = m_biliInterface->asyncDownloadStream(url.toStdString(), 
+                        auto download_future = self->m_biliInterface->asyncDownloadStream(url.toStdString(), 
                             [&file](const char* data, size_t size) -> bool {
                                 if (data && size > 0) {
                                     file.write(data, size);
@@ -258,13 +273,15 @@ namespace network
                             // Remove partial file on failure
                             QFile::remove(tempPath);
                             
-                            // Clean up from active downloads map
-                            {
-                                std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                                m_activeDownloads.erase(downloadKey);
-                            }
-                            promisePtr->set_exception(std::make_exception_ptr(std::runtime_error("Download failed")));
-                            emit downloadFailed(url, filepath, "Download failed");
+                                        // Clean up from active downloads map
+                                        {
+                                            std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                                            self->m_activeDownloads.erase(downloadKey);
+                                        }
+                                        promisePtr->set_exception(std::make_exception_ptr(std::runtime_error("Download failed")));
+                                        QMetaObject::invokeMethod(self.get(), [self, url, filepath]() {
+                                            emit self->downloadFailed(url, filepath, "Download failed");
+                                        }, Qt::QueuedConnection);
                             return;
                         }
                         // Move .part to final path (best-effort atomic on same volume)
@@ -280,11 +297,13 @@ namespace network
                                 
                                 // Clean up from active downloads map
                                 {
-                                    std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                                    m_activeDownloads.erase(downloadKey);
+                                    std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                                    self->m_activeDownloads.erase(downloadKey);
                                 }
                                 promisePtr->set_exception(std::make_exception_ptr(std::runtime_error("Failed to finalize download file move")));
-                                emit downloadFailed(url, filepath, "Failed to finalize download file move");
+                                QMetaObject::invokeMethod(self.get(), [self, url, filepath]() {
+                                    emit self->downloadFailed(url, filepath, "Failed to finalize download file move");
+                                }, Qt::QueuedConnection);
                                 return;
                             }
                         }
@@ -293,22 +312,26 @@ namespace network
                         
                         // Clean up from active downloads map
                         {
-                            std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                            m_activeDownloads.erase(downloadKey);
+                            std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                            self->m_activeDownloads.erase(downloadKey);
                         }
                         promisePtr->set_value();
-                        emit downloadCompleted(url, filepath);
+                        QMetaObject::invokeMethod(self.get(), [self, url, filepath]() {
+                            emit self->downloadCompleted(url, filepath);
+                        }, Qt::QueuedConnection);
                         
                     } catch (const std::exception& e) {
                         LOG_ERROR("Bilibili download error: {}", e.what());
                         
                         // Clean up from active downloads map
                         {
-                            std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                            m_activeDownloads.erase(downloadKey);
+                            std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                            self->m_activeDownloads.erase(downloadKey);
                         }
                         promisePtr->set_exception(std::current_exception());
-                        emit downloadFailed(url, filepath, e.what());
+                        QMetaObject::invokeMethod(self.get(), [self, url, filepath, e]() {
+                            emit self->downloadFailed(url, filepath, e.what());
+                        }, Qt::QueuedConnection);
                         throw; // Re-throw to be handled by caller
                     }
                 }).share();
@@ -325,7 +348,7 @@ namespace network
         }
     }
 
-    std::shared_future<std::shared_ptr<std::istream>> NetworkManager::getAudioStreamAsync(SupportInterface platform, const QString& params, const QString& savepath)
+    std::shared_future<std::shared_ptr<std::istream>> NetworkManager::getAudioStreamAsync(PlatformType platform, const QString& params, const QString& savepath)
     {
         if (checkPlatformStatus(platform) == false) {
             return std::async(std::launch::async, [platform, params, savepath]() -> std::shared_ptr<std::istream> {
@@ -362,8 +385,12 @@ namespace network
         }
         
         switch (platform) {
-            case SupportInterface::Bilibili:
-                return std::async(std::launch::async, [this, params, savepath, streamKey, promisePtr]() -> std::shared_ptr<std::istream> {
+            case PlatformType::Bilibili:
+                return std::async(std::launch::async, [self = this->shared_from_this(), params, savepath, streamKey, promisePtr]() -> std::shared_ptr<std::istream> {
+                    if (self->m_exitFlag.load()) {
+                        promisePtr->set_exception(std::make_exception_ptr(std::runtime_error("NetworkManager is exiting")));
+                        throw std::runtime_error("NetworkManager is exiting");
+                    }
                     try {
                         // Create streaming buffer (5MB buffer for smooth streaming)
                         const size_t buffer_size = 5 * 1024 * 1024;
@@ -380,8 +407,8 @@ namespace network
                             if (!file_stream->is_open()) {
                                 // Clean up from active streams map
                                 {
-                                    std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                                    m_activeStreams.erase(streamKey);
+                                    std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                                    self->m_activeStreams.erase(streamKey);
                                 }
                                 promisePtr->set_exception(std::make_exception_ptr(
                                     std::runtime_error("Failed to open file for writing: " + temp_savepath.toStdString())));
@@ -389,12 +416,12 @@ namespace network
                             }
                         }
                         // Get actual URL from params
-                        std::string url = m_biliInterface->getAudioUrlByParams(params.toStdString());
+                        std::string url = self->m_biliInterface->getAudioUrlByParams(params.toStdString());
                         if (url.empty()) {
                             // Clean up from active streams map
                             {
-                                std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                                m_activeStreams.erase(streamKey);
+                                std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                                self->m_activeStreams.erase(streamKey);
                             }
                             promisePtr->set_exception(std::make_exception_ptr(
                                 std::runtime_error("Failed to get audio URL from parameters")));
@@ -403,12 +430,12 @@ namespace network
                         // Start async download to the streaming buffer with a cancel token
                         auto cancel_token = std::make_shared<std::atomic<bool>>(false);
                         {
-                            std::lock_guard<std::mutex> lg(m_bgMutex);
-                            m_downloadCancelTokens.push_back({ cancel_token, pipe });
+                            std::lock_guard<std::mutex> lg(self->m_bgMutex);
+                            self->m_downloadCancelTokens.push_back({ cancel_token, pipe });
                         }
                         auto os = pipe->getOutputStream();
                         auto is = pipe->getInputStream();
-                        auto download_future = m_biliInterface->asyncDownloadStream(
+                        auto download_future = self->m_biliInterface->asyncDownloadStream(
                             url,
                             [os, file_stream, cancel_token](const char* data, size_t size) -> bool {
                                 // Check cancellation request
@@ -427,7 +454,10 @@ namespace network
                         );
 
                         // Spawn a lightweight watcher to finalize file and mark buffer complete
-                        std::thread watcher_thread([this, os, file_stream, savepath, temp_savepath, streamKey, cancel_token, df = std::move(download_future)]() mutable {
+                        std::thread watcher_thread([self, os, file_stream, savepath, temp_savepath, streamKey, cancel_token, df = std::move(download_future)]() mutable {
+                            if (self->m_exitFlag.load()) {
+                                // attempt to stop gracefully
+                            }
                             try {
                                 bool ok = df.get();
                                 os.reset(); // Always close output stream (even on error)
@@ -460,25 +490,25 @@ namespace network
                             }
 
                             // Remove cancel token from active list (best-effort)
-                            std::lock_guard<std::mutex> lg(m_bgMutex);
-                            auto it = std::find_if(m_downloadCancelTokens.begin(), m_downloadCancelTokens.end(),
+                            std::lock_guard<std::mutex> lg(self->m_bgMutex);
+                            auto it = std::find_if(self->m_downloadCancelTokens.begin(), self->m_downloadCancelTokens.end(),
                                 [&cancel_token](const DownloadCancelEntry& e) { return e.token == cancel_token; });
-                            if (it != m_downloadCancelTokens.end()) {
-                                m_downloadCancelTokens.erase(it);
+                            if (it != self->m_downloadCancelTokens.end()) {
+                                self->m_downloadCancelTokens.erase(it);
                                 LOG_INFO("Download canceled: {}", cancel_token->load());
                             }
                             
                             // Remove from active streams map
                             {
-                                std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                                m_activeStreams.erase(streamKey);
+                                std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                                self->m_activeStreams.erase(streamKey);
                             }
                         });
 
                         // Track watcher thread so we can join on shutdown
                         {
-                            std::lock_guard<std::mutex> lg(m_bgMutex);
-                            m_bgThreads.emplace_back(std::move(watcher_thread));
+                            std::lock_guard<std::mutex> lg(self->m_bgMutex);
+                            self->m_bgThreads.emplace_back(std::move(watcher_thread));
                         }
                         // Note: The download continues in background, the StreamingInputStream will
                         // block on read() calls until data is available. A watcher thread ensures
@@ -495,8 +525,8 @@ namespace network
                         
                         // Clean up from active streams map
                         {
-                            std::lock_guard<std::mutex> lock(m_downloadMapMutex);
-                            m_activeStreams.erase(streamKey);
+                            std::lock_guard<std::mutex> lock(self->m_downloadMapMutex);
+                            self->m_activeStreams.erase(streamKey);
                         }
                         promisePtr->set_exception(std::current_exception());
                         throw; // Re-throw to be handled by caller
@@ -540,11 +570,11 @@ namespace network
         return true;
     }
 
-    bool NetworkManager::checkPlatformStatus(SupportInterface platform)
+    bool NetworkManager::checkPlatformStatus(PlatformType platform)
     {
         switch(platform)
         {
-            case SupportInterface::Bilibili:
+            case PlatformType::Bilibili:
                 return m_biliInterface != nullptr;
             default:
                 return false;
@@ -557,53 +587,29 @@ namespace network
         if (cancelFlag.load()) {
             return {};
         }
-        if (checkPlatformStatus(SupportInterface::Bilibili) == false) {
+        if (checkPlatformStatus(PlatformType::Bilibili) == false) {
             return std::async(std::launch::async, [keyword]() -> QList<SearchResult> {
                 LOG_ERROR("Bilibili interface not configured for search, keyword: {}", keyword.toStdString());
                 throw std::runtime_error("Bilibili interface not configured for search");
             });
         }
 
-        auto fut = std::async(std::launch::async, [this, keyword, maxResults, &cancelFlag]() -> QList<SearchResult> {
+        auto fut = std::async(std::launch::async, [self = this->shared_from_this(), keyword, maxResults, &cancelFlag]() -> QList<SearchResult> {
             try {
-                // Cast to concrete type to access platform-specific searchByTitle
-                auto* biliInterface = dynamic_cast<BilibiliNetworkInterface*>(m_biliInterface.get());
-                if (!biliInterface) {
-                    throw std::runtime_error("Invalid Bilibili interface");
-                }
-                
-                // New searchByTitle already combines searching and getting page info
-                auto pages = biliInterface->searchByTitle(keyword.toStdString()); // Returns BilibiliPageInfo with enriched metadata
-                
+                if (self->m_exitFlag.load()) return {};
+                if (!self->m_biliInterface) throw std::runtime_error("Invalid Bilibili interface");
+                // New searchByTitle returns a vector of network::SearchResult (platform-agnostic)
+                auto pages = self->m_biliInterface->searchByTitle(keyword.toStdString());
+
                 QList<SearchResult> result;
                 for (const auto& page : pages) {
-                    if (cancelFlag.load()) {
+                    if (cancelFlag.load() || self->m_exitFlag.load()) {
                         return {};
                     }
-                    // Generate cover filename from bvid (unique identifier)
-                    QString coverFilename = QString("%1.jpg").arg(QString::fromStdString(page.bvid));
-                    
-                    SearchResult pageResult {
-                        .title = QString::fromStdString(fmt::format("{} - {}", page.title, page.partTitle)),
-                        .uploader = QString::fromStdString(page.author),
-                        .platform = SupportInterface::Bilibili,
-                        .duration = page.duration,
-                        .coverUrl = QString::fromStdString(page.cover),
-                        .coverImg = coverFilename,
-                        .description = QString::fromStdString(page.description.substr(0, std::min<size_t>(200, page.description.length()))),
-                        .interfaceData = QString("bvid=%1&cid=%2")
-                            .arg(QString::fromStdString(page.bvid))
-                            .arg(QString::number(page.cid)),
-                    };
-                    
-                    LOG_DEBUG("Bilibili search result - Title: {}, Uploader: {}, CID: {}, Duration: {}",
-                              pageResult.title.toStdString(),
-                              pageResult.uploader.toStdString(),
-                              page.cid,
-                              Seconds2HMS(pageResult.duration));
-                    
-                    result.append(pageResult);
-                    
+
+                    // 'page' is already network::SearchResult (with QString fields), append directly
+                    result.append(page);
+
                     if (result.size() >= maxResults) {
                         break; // Reached max results
                     }
@@ -634,35 +640,35 @@ namespace network
     std::future<void> NetworkManager::monitorSearchFuturesWithCV(const QString& keyword, std::vector<std::future<void>>&& futures)
     {
         // Launch a monitoring thread that uses condition variables instead of polling
-        return std::async(std::launch::async, [this, keyword, futures = std::move(futures)]() mutable {
-            
+        return std::async(std::launch::async, [self = this->shared_from_this(), keyword, futures = std::move(futures)]() mutable {
+
             for (auto& future : futures) {
-                if (m_cancelFlag.load()) {
+                if (self->m_cancelFlag.load() || self->m_exitFlag.load()) {
                     break;
                 }
-                
+
                 try {
                     // This blocks until the future completes (no CPU spinning!)
                     future.get(); // This will re-throw any exception from the future
-                    
+
                 } catch (const std::exception& e) {
                     // Exception handling: convert and emit error signal
-                    QMetaObject::invokeMethod(this, [this, keyword, e]() {
-                        emit searchFailed(keyword, QString("Search error: %1").arg(e.what()));
+                    QMetaObject::invokeMethod(self.get(), [self, keyword, e]() {
+                        emit self->searchFailed(keyword, QString("Search error: %1").arg(e.what()));
                     }, Qt::QueuedConnection);
-                    
+
                 } catch (...) {
                     // Handle unknown exceptions
-                    QMetaObject::invokeMethod(this, [this, keyword]() {
-                        emit searchFailed(keyword, "Unknown search error occurred");
+                    QMetaObject::invokeMethod(self.get(), [self, keyword]() {
+                        emit self->searchFailed(keyword, "Unknown search error occurred");
                     }, Qt::QueuedConnection);
                 }
             }
-            
+
             // All futures completed successfully
-            if (!m_cancelFlag.load()) {
-                QMetaObject::invokeMethod(this, [this, keyword]() {
-                    emit searchCompleted(keyword);
+            if (!self->m_cancelFlag.load() && !self->m_exitFlag.load()) {
+                QMetaObject::invokeMethod(self.get(), [self, keyword]() {
+                    emit self->searchCompleted(keyword);
                 }, Qt::QueuedConnection);
             }
         });

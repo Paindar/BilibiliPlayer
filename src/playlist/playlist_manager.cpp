@@ -13,7 +13,6 @@
 #include <fstream>
 #include <sstream>
 #include <fmt/format.h>
-#include <manager/application_context.h>
 #include <util/md5.h>
 
 PlaylistManager::PlaylistManager(ConfigManager* configManager, QObject* parent)
@@ -63,11 +62,6 @@ void PlaylistManager::initialize()
         
         // Load existing categories
         loadCategoriesFromFile();
-        
-        // Connect config change signal
-        if (m_configManager) {
-            connect(m_configManager, &ConfigManager::pathsChanged, this, &PlaylistManager::onConfigChanged);
-        }
         
         m_initialized = true;
         LOG_INFO("PlaylistManager initialization complete");
@@ -569,13 +563,6 @@ void PlaylistManager::setCurrentPlaylist(const QUuid& playlistId)
     LOG_INFO("Current playlist changed to: {}", playlistId.toString().toStdString());
 }
 
-// Slots
-void PlaylistManager::onConfigChanged()
-{
-    LOG_INFO("Config changed, reloading playlist manager settings");
-    // Could reload settings or file paths here if needed
-}
-
 void PlaylistManager::onAutoSaveTimer()
 {
     if (m_initialized) {
@@ -817,12 +804,9 @@ QString PlaylistManager::generateStreamingFilepath(const playlist::SongInfo& son
     // Safe filename format: "platform_hash.audio"
     QString filename = QString("%1_%2.audio").arg(platformStr).arg(QString::fromStdString(result));
     
-    // Get configured audio cache directory from ConfigManager if available,
-    // otherwise use a local ./tmp directory relative to the executable/current working dir.
-    QString cacheDir;
-    if (CONFIG_MANAGER) {
-        cacheDir = CONFIG_MANAGER->getAudioCacheDirectory();
-    } else {
+    // Get audio cache directory from ConfigManager
+    QString cacheDir = m_configManager->getAudioCacheDirectory();
+    if (cacheDir.isEmpty()) {
         cacheDir = QDir::cleanPath(QDir::currentPath() + "/tmp");
     }
 
