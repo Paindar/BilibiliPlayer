@@ -330,7 +330,27 @@ Tasks are organized into phases:
   - Implement custom FFmpeg AVIO context to read from StreamingBuffer ✅ (via RealtimePipe)
   - Handle buffering state transitions (Buffering ↔ Playing) ✅
   - Display buffer percentage in UI ✅
+    - Display buffer percentage in UI ✅
 
+### FFmpeg Decoder Buffering Robustness
+
+- [ ] [T027.4] [US3] [P1] Make FFmpeg decoder resilient to small initial buffers (avoid blocking in `startDecoding`)
+  - Problem: `FFmpeg::startDecode()` (internal decoder path) currently blocks when initial input buffer is smaller than ~64KiB. This causes deadlocks or long stalls for streams that deliver small initial chunks or for some network conditions.
+  - Goals:
+    - Ensure `startDecoding()` returns promptly and does not block waiting for a large initial buffer.
+    - Allow decoding to begin as soon as minimal stream headers are available and continue feeding data asynchronously until sufficient buffered data exists for smooth decoding.
+  - Tasks:
+    - Add detection in `FFmpegStreamDecoder` for insufficient initial buffered bytes and switch the decoder to a non-blocking read mode (use custom AVIO with non-blocking callbacks or a background feeder thread).
+    - Implement a background buffer feeder that reads from the network/file stream and fills an internal circular buffer; the AVIO read callback must read from this buffer without blocking the caller.
+    - Add a wake/notify mechanism so the decoder can resume once more data has arrived (condition variable or promise/future signaling). Ensure `startDecoding()` does not spin-wait.
+    - Add configurable threshold (default 64*1024) and runtime option to tune the minimal buffered bytes required before switching to aggressive decoding strategies.
+    - Add unit tests reproducing the small-initial-buffer case: simulate a stream that provides <64KiB at `initialize` time and then supplies the rest asynchronously; assert `startDecoding()` returns and decoding proceeds without deadlock.
+    - Update docs and `specs/002-unit-test-coverage` to include the new tests and acceptance criteria.
+  - Acceptance criteria:
+    - `startDecoding()` returns immediately (within 100ms) even when initial buffer < threshold.
+    - Decoder proceeds to produce `AudioFrame` objects once sufficient data has been fed, without blocking the calling thread.
+    - Existing integration tests (including WAV tests) pass on CI and locally.
+  - Notes: This is a high-priority stability fix because network and streaming sources may produce small chunk sizes; implement carefully to avoid introducing race conditions.
 **US3 Independent Test Criteria**:
 - Play Bilibili audio URL and stream without full download
 - Play YouTube video URL and extract audio stream
