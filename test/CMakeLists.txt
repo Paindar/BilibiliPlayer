@@ -33,6 +33,7 @@ add_executable(BilibiliPlayerTest
     
     # FFmpeg decoder test (requires FFmpeg)
     ffmpeg_decoder_test.cpp
+    ffmpeg_decoder_wav_test.cpp
     
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
