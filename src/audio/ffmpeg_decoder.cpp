@@ -110,7 +110,7 @@ bool FFmpegStreamDecoder::initialize(std::shared_ptr<std::istream> inputAudioStr
 
     return true;
 }
-
+// Notice: This function will block if bytes in audioCache is less than min_buffer_size(60*1024)!
 bool FFmpegStreamDecoder::startDecoding(uint64_t lenFullStream)
 {
     LOG_INFO("FFmpegStreamDecoder starting decoding. "
@@ -136,96 +136,8 @@ bool FFmpegStreamDecoder::startDecoding(uint64_t lenFullStream)
             std::terminate();
         }
     });
-    std::scoped_lock lock(ffmpegMutex_);
-    // Setup FFmpeg for decoding
-    // TODO: it must not the best way, need optimization here
-    // Wait for initial buffering (at least 64KB for proper format detection),
-    //  or until playback is stopped
-    const size_t min_buffer_size = 64 * 1024;
-    {
-        std::unique_lock<std::mutex> lock(audioCacheMutex);
-        while (audioCache.size() < min_buffer_size && !destroying_.load()) {
-            decodeCondition.wait(lock);
-        }
-    }
-    if (destroying_.load()) {
-        return false;
-    }
-    // Open stream with custom IO
-    if (avformat_open_input(&format_ctx_, nullptr, nullptr, nullptr) < 0) {
-        LOG_ERROR("Failed to open custom stream for decoding.");
-        return false;
-    }
-    // Find stream info
-    if (avformat_find_stream_info(format_ctx_, nullptr) < 0) {
-        LOG_ERROR("Failed to find stream info for decoding.");
-        return false;
-    }
-
-    // Find audio stream 
-    const AVCodec* codec = nullptr;
-    audioStreamIndex = av_find_best_stream(format_ctx_, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
-    if (audioStreamIndex < 0) {
-        LOG_ERROR("Failed to find audio stream for decoding.");
-        return false;
-    }
-
-    // Create codec context
-    codec_ctx_ = avcodec_alloc_context3(codec);
-    if (!codec_ctx_) {
-        LOG_ERROR("Failed to allocate codec context.");
-        return false;
-    }
-
-    //Copy codec parameters
-    AVStream* audioStream = format_ctx_->streams[audioStreamIndex];
-    if (avcodec_parameters_to_context(codec_ctx_, audioStream->codecpar) < 0) {
-        LOG_ERROR("Failed to copy codec parameters to context.");
-        return false;
-    }
-
-    // Open codec
-    if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
-        LOG_ERROR("Failed to open codec for decoding.");
-        return false;
-    }
-
-    // Extract audio format information
-    audio_format_.sample_rate = codec_ctx_->sample_rate;
-    audio_format_.channels = codec_ctx_->ch_layout.nb_channels;
-    audio_format_.bits_per_sample = 16;
-
-    // notify waiters that audio format is available
-    audioFormatCondition_.notify_all();
-
-    // Init resampler
-    swr_ctx_ = swr_alloc();
-    if (!swr_ctx_) {
-        LOG_ERROR("Failed to allocate resampler context.");
-        return false;
-    }
-
-    AVChannelLayout in_ch_layout = codec_ctx_->ch_layout;
-    av_channel_layout_copy(&in_ch_layout, &codec_ctx_->ch_layout);
-    av_opt_set_chlayout(swr_ctx_, "in_chlayout", &in_ch_layout, 0);
-    av_opt_set_int(swr_ctx_, "in_sample_rate", codec_ctx_->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx_, "in_sample_fmt", codec_ctx_->sample_fmt, 0);
-    
-    // Set output parameters (preserve sample rate and channels, but convert to 16-bit)
-    AVChannelLayout out_ch_layout;
-    av_channel_layout_copy(&out_ch_layout, &codec_ctx_->ch_layout);
-    av_opt_set_chlayout(swr_ctx_, "out_chlayout", &out_ch_layout, 0);
-    av_opt_set_int(swr_ctx_, "out_sample_rate", codec_ctx_->sample_rate, 0);
-    av_opt_set_sample_fmt(swr_ctx_, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-    
-    // Initialize resampler
-    if (swr_init(swr_ctx_) < 0) {
-        LOG_ERROR("Failed to initialize resampler.");
-        return false;
-    }
-
-    // Start decode and playback threads
-    LOG_INFO("FFmpegStreamDecoder started decoding.");
+    // Start decode and playback threads; perform FFmpeg setup inside decoding thread
+    LOG_INFO("FFmpegStreamDecoder starting consumer and decoder threads (setup performed in decoder thread).");
     decodeAudioBytesThread = std::thread([this]() {
         try {
             this->decodeAudioBytesFunc();
@@ -237,7 +149,8 @@ bool FFmpegStreamDecoder::startDecoding(uint64_t lenFullStream)
             std::terminate();
         }
     });
-    ffmpegCondition_.notify_all();
+
+    // startDecoding returns quickly; heavy lifting happens in decoder thread
     return true;
 }
 
@@ -393,6 +306,102 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
         return;
     }
     
+    // Perform FFmpeg setup here in decoder thread so startDecoding() can return quickly
+    {
+        std::scoped_lock lock(ffmpegMutex_);
+        // Open stream with custom IO
+        if (avformat_open_input(&format_ctx_, nullptr, nullptr, nullptr) < 0) {
+            LOG_ERROR("Failed to open custom stream for decoding.");
+            QString reason = QStringLiteral("Failed to open custom stream for decoding.");
+            emit decodingError(reason);
+            return;
+        }
+        // Find stream info (may block inside readPacket, but decoder thread handles it)
+        if (avformat_find_stream_info(format_ctx_, nullptr) < 0) {
+            LOG_ERROR("Failed to find stream info for decoding.");
+            QString reason = QStringLiteral("Failed to find stream info for decoding.");
+            emit decodingError(reason);
+            return;
+        }
+
+        // Find audio stream
+        const AVCodec* codec = nullptr;
+        audioStreamIndex = av_find_best_stream(format_ctx_, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0);
+        if (audioStreamIndex < 0) {
+            LOG_ERROR("Failed to find audio stream for decoding.");
+            QString reason = QStringLiteral("Failed to find audio stream for decoding.");
+            emit decodingError(reason);
+            return;
+        }
+
+        // Create codec context
+        codec_ctx_ = avcodec_alloc_context3(codec);
+        if (!codec_ctx_) {
+            LOG_ERROR("Failed to allocate codec context.");
+            QString reason = QStringLiteral("Failed to allocate codec context.");
+            emit decodingError(reason);
+            return;
+        }
+
+        //Copy codec parameters
+        AVStream* audioStream = format_ctx_->streams[audioStreamIndex];
+        if (avcodec_parameters_to_context(codec_ctx_, audioStream->codecpar) < 0) {
+            LOG_ERROR("Failed to copy codec parameters to context.");
+            QString reason = QStringLiteral("Failed to copy codec parameters to context.");
+            emit decodingError(reason);
+            return;
+        }
+
+        // Open codec
+        if (avcodec_open2(codec_ctx_, codec, nullptr) < 0) {
+            LOG_ERROR("Failed to open codec for decoding.");
+            QString reason = QStringLiteral("Failed to open codec for decoding.");
+            emit decodingError(reason);
+            return;
+        }
+
+        // Extract audio format information
+        audio_format_.sample_rate = codec_ctx_->sample_rate;
+        audio_format_.channels = codec_ctx_->ch_layout.nb_channels;
+        audio_format_.bits_per_sample = 16;
+
+        // notify waiters that audio format is available
+        audioFormatCondition_.notify_all();
+
+        // Init resampler
+        swr_ctx_ = swr_alloc();
+        if (!swr_ctx_) {
+            LOG_ERROR("Failed to allocate resampler context.");
+            QString reason = QStringLiteral("Failed to allocate resampler context.");
+            emit decodingError(reason);
+            return;
+        }
+
+        AVChannelLayout in_ch_layout = codec_ctx_->ch_layout;
+        av_channel_layout_copy(&in_ch_layout, &codec_ctx_->ch_layout);
+        av_opt_set_chlayout(swr_ctx_, "in_chlayout", &in_ch_layout, 0);
+        av_opt_set_int(swr_ctx_, "in_sample_rate", codec_ctx_->sample_rate, 0);
+        av_opt_set_sample_fmt(swr_ctx_, "in_sample_fmt", codec_ctx_->sample_fmt, 0);
+        
+        // Set output parameters (preserve sample rate and channels, but convert to 16-bit)
+        AVChannelLayout out_ch_layout;
+        av_channel_layout_copy(&out_ch_layout, &codec_ctx_->ch_layout);
+        av_opt_set_chlayout(swr_ctx_, "out_chlayout", &out_ch_layout, 0);
+        av_opt_set_int(swr_ctx_, "out_sample_rate", codec_ctx_->sample_rate, 0);
+        av_opt_set_sample_fmt(swr_ctx_, "out_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+        
+        // Initialize resampler
+        if (swr_init(swr_ctx_) < 0) {
+            LOG_ERROR("Failed to initialize resampler.");
+            QString reason = QStringLiteral("Failed to initialize resampler.");
+            emit decodingError(reason);
+            return;
+        }
+
+        // Signal that FFmpeg setup is complete
+        ffmpegCondition_.notify_all();
+    }
+
     while (playing_.load() && !destroying_.load()) {
         {
             std::unique_lock<std::mutex> lock(ffmpegMutex_);
