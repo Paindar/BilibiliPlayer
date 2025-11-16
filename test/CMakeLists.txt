@@ -179,10 +179,12 @@ add_custom_command(TARGET BilibiliPlayerTest POST_BUILD
 # Copy necessary DLLs on Windows after build
 if(WIN32)
     add_custom_command(TARGET BilibiliPlayerTest POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:BilibiliPlayerTest>
-            $<TARGET_FILE_DIR:BilibiliPlayerTest>
-        COMMAND_EXPAND_LISTS
+        # 1. Copy all DLLs from the Conan bin folder (already populated by conan install)
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/bin"
+            "$<TARGET_FILE_DIR:BilibiliPlayerTest>"
+
+        COMMENT "Copying DLLs (Conan + Qt) to runtime output folder"
     )
 endif()
 
