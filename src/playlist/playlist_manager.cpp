@@ -72,7 +72,7 @@ void PlaylistManager::initialize()
     }
 }
 
-void PlaylistManager::loadCategoriesFromFile()
+bool PlaylistManager::loadCategoriesFromFile()
 {
     LOG_INFO("Loading categories from JSON file...");
     
@@ -87,12 +87,13 @@ void PlaylistManager::loadCategoriesFromFile()
         
         LOG_INFO("Categories loaded from JSON: {} categories, {} playlists", m_categories.size(), totalPlaylists);
         emit categoriesLoaded(m_categories.size(), totalPlaylists);
-        return;
+        return true;
     }
     
     // No file found, ensure default setup exists
     m_currentPlaylistId = QUuid();
     emit categoriesLoaded(0, 0);
+    return false;
 }
 
 void PlaylistManager::saveAllCategories()
@@ -828,6 +829,7 @@ QUuid PlaylistManager::ensureDefaultSetup()
         
         m_categories.insert(defaultCategory.uuid, defaultCategory);
         m_categoryPlaylists.insert(defaultCategory.uuid, QList<QUuid>());
+        categoryUuid = defaultCategory.uuid;
         LOG_INFO("Created default category: {} ({})", 
                  defaultCategory.name.toStdString(), defaultCategory.uuid.toString().toStdString());
     }
@@ -846,7 +848,7 @@ QUuid PlaylistManager::ensureDefaultSetup()
         m_playlists.insert(favoritePlaylist.uuid, favoritePlaylist);
         m_playlistSongs.insert(favoritePlaylist.uuid, QList<playlist::SongInfo>());
         m_categoryPlaylists[categoryUuid].append(favoritePlaylist.uuid);
-
+        m_currentPlaylistId = favoritePlaylist.uuid;
         emit playlistAdded(favoritePlaylist, categoryUuid);
         LOG_INFO("Created favorite playlist: {} ({}) in category: {}", 
              favoritePlaylist.name.toStdString(), favoritePlaylist.uuid.toString().toStdString(), categoryUuid.toString().toStdString());

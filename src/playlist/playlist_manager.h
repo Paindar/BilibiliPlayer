@@ -37,7 +37,7 @@ public:
     
     // Initialization - load existing data from workspace
     void initialize();
-    void loadCategoriesFromFile();
+    bool loadCategoriesFromFile();
     void saveAllCategories();
     
     // Category operations with UUID-based identification
