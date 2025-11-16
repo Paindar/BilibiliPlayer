@@ -15,6 +15,8 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools Con
 # Set the translation files path
 set(TS_FILES resource/lang/BilibiliPlayer_zh_CN.ts)
 
+
+enable_testing()
 # Add the src subdirectory
 add_subdirectory(src)
 # Add tests
@@ -28,3 +30,26 @@ else()
 endif()
 
 # Installation and other configurations will be handled in src directory
+find_program(GCOVR_EXE gcovr)
+if(GCOVR_EXE)
+    add_custom_target(coverage
+        COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+        COMMAND ${GCOVR_EXE}
+            -r ${CMAKE_SOURCE_DIR}
+            --html --html-details
+            -o ${CMAKE_BINARY_DIR}/coverage.html
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Running tests + generating coverage report"
+    )
+endif()
+option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
+
+if(ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(STATUS "Coverage enabled: adding --coverage flags")
+        add_compile_options(--coverage -O0 -g)
+        add_link_options(--coverage)
+    else()
+        message(WARNING "Coverage enabled but compiler is not GCC/Clang")
+    endif()
+endif()

@@ -185,3 +185,6 @@ if(WIN32)
         COMMAND_EXPAND_LISTS
     )
 endif()
+
+# Register with CTest
+add_test(NAME BilibiliPlayerTest COMMAND $<TARGET_FILE:BilibiliPlayerTest>)
