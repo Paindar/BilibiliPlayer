@@ -55,6 +55,7 @@ set(PROJECT_SOURCES
     
     # Audio components
     audio/ffmpeg_decoder.cpp
+    audio/ffmpeg_log.cpp
     audio/ffmpeg_decoder.h
     audio/wasapi_audio_output.cpp
     audio/wasapi_audio_output.h

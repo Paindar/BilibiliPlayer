@@ -1,4 +1,5 @@
 #include "ffmpeg_decoder.h"
+#include "ffmpeg_log.h"
 
 #include <log/log_manager.h>
 #include "audio_event_processor.h"
@@ -24,6 +25,8 @@ FFmpegStreamDecoder::FFmpegStreamDecoder(QObject* parent)
     streamConsumptionFinished_(false),
     m_decoded_samples(0)
 {
+    // Ensure FFmpeg logging is routed through our callback (idempotent)
+    InstallFFmpegLogCallback();
 }
 
 void FFmpegStreamDecoder::setEventProcessor(std::shared_ptr<AudioEventProcessor> processor)
@@ -184,21 +187,25 @@ bool FFmpegStreamDecoder::isCompleted() const
     return decodeCompleted_.load();
 }
 
-std::future<AudioFormat> FFmpegStreamDecoder::getAudioFormatAsync() const
+std::future<AudioFormat> FFmpegStreamDecoder::getAudioFormatAsync(std::chrono::milliseconds timeout) const
 {
-    return std::async(std::launch::deferred, [this]() {
+    // Run asynchronously on a background thread to avoid deferred waits
+    return std::async(std::launch::async, [this, timeout]() {
         std::unique_lock<std::mutex> lock(this->audioFormatMutex_);
-        // Wait until audio format is available
-        this->audioFormatCondition_.wait(lock, [this]() {
-            return this->audio_format_.isValid() || this->destroying_.load();
+        // Wait until audio format is verified (successful decode) or decoder is being destroyed
+        this->audioFormatCondition_.wait_for(lock, timeout, [this]() {
+            return this->audio_format_verified_.load() || this->destroying_.load();
         });
-        return this->audio_format_;
+        AudioFormat fmt = this->audio_format_;
+        lock.unlock();
+        return fmt;
     });
 }
 
 std::future<double> FFmpegStreamDecoder::getDurationAsync() const
 {
-    return std::async(std::launch::deferred, [this]() {
+    // Run asynchronously on a background thread to avoid blocking the caller
+    return std::async(std::launch::async, [this]() {
         std::unique_lock<std::mutex> lock(this->ffmpegMutex_);
         // Wait until format context is available
         this->ffmpegCondition_.wait(lock, [this]() {
@@ -360,13 +367,17 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
             return;
         }
 
-        // Extract audio format information
-        audio_format_.sample_rate = codec_ctx_->sample_rate;
-        audio_format_.channels = codec_ctx_->ch_layout.nb_channels;
-        audio_format_.bits_per_sample = 16;
+        // Extract audio format information (provisional). We'll mark it "verified"
+        // after we successfully decode and convert the first frame to avoid false
+        // positives when FFmpeg misdetects formats on truncated or corrupt input.
+        {
+            std::scoped_lock lock(audioFormatMutex_);
+            audio_format_.sample_rate = codec_ctx_->sample_rate;
+            audio_format_.channels = codec_ctx_->ch_layout.nb_channels;
+            audio_format_.bits_per_sample = 16;
+            // do not notify waiters yet; wait until a successful frame conversion
+        }
 
-        // notify waiters that audio format is available
-        audioFormatCondition_.notify_all();
 
         // Init resampler
         swr_ctx_ = swr_alloc();
@@ -503,6 +514,12 @@ void FFmpegStreamDecoder::decodeAudioBytesFunc()
             // Convert frame to output format
             auto audio_frame = decodeFrame(frame);
             if (audio_frame) {
+                // On first successful decoded frame, mark audio format as verified
+                // and notify any waiters for getAudioFormatAsync().
+                if (!audio_format_verified_.load()) {
+                    audio_format_verified_.store(true);
+                    audioFormatCondition_.notify_all();
+                }
                 // Add to queue
                 if (outputFrameQueue.expired() == false) {
                     auto sharedQueue = outputFrameQueue.lock();

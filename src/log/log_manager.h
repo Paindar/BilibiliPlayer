@@ -86,6 +86,31 @@ public:
     void flush();
     void setRotationSize(size_t maxFileSize);
     void setMaxFiles(size_t maxFiles);
+    // FFmpeg-specific logging
+    template<typename... Args>
+    void ffmpeg_trace(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::trace, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
+    template<typename... Args>
+    void ffmpeg_debug(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::debug, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
+    template<typename... Args>
+    void ffmpeg_info(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::info, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
+    template<typename... Args>
+    void ffmpeg_warn(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::warn, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
+    template<typename... Args>
+    void ffmpeg_error(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::err, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
+    template<typename... Args>
+    void ffmpeg_critical(const std::string& format, Args&&... args) {
+        auto lg = spdlog::get("ffmpeg"); if (lg) { lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::critical, fmt::format(format, std::forward<Args>(args)...)); lg->flush(); }
+    }
     
 private:
     LogManager() = default;
@@ -94,6 +119,7 @@ private:
     LogManager& operator=(const LogManager&) = delete;
     
     std::shared_ptr<spdlog::logger> m_logger;
+    std::shared_ptr<spdlog::logger> m_ffmpeg_logger;
     std::string m_logDirectory;
     bool m_initialized = false;
 };
@@ -108,3 +134,11 @@ private:
 #define LOG_WARN(...)  do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::warn,  __VA_ARGS__); } while(0)
 #define LOG_ERROR(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::err, __VA_ARGS__); } while(0)
 #define LOG_CRITICAL(...) do { auto _lg = spdlog::get("BilibiliPlayer"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::critical, __VA_ARGS__); } while(0)
+
+// FFmpeg-specific logging macros
+#define LOG_FFMPEG_TRACE(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::trace, __VA_ARGS__); } while(0)
+#define LOG_FFMPEG_DEBUG(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::debug, __VA_ARGS__); } while(0)
+#define LOG_FFMPEG_INFO(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::info, __VA_ARGS__); } while(0)
+#define LOG_FFMPEG_WARN(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::warn, __VA_ARGS__); } while(0)
+#define LOG_FFMPEG_ERROR(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::err, __VA_ARGS__); } while(0)
+#define LOG_FFMPEG_CRITICAL(...) do { auto _lg = spdlog::get("ffmpeg"); if (_lg) _lg->log(spdlog::source_loc{__FILE__, __LINE__, SPDLOG_FUNCTION}, spdlog::level::critical, __VA_ARGS__); } while(0)

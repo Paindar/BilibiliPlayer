@@ -134,6 +134,39 @@ void LogManager::initialize(const std::string& logDirectory)
         // Register as default logger
         spdlog::register_logger(m_logger);
         spdlog::set_default_logger(m_logger);
+
+        // Create FFmpeg-specific logger with its own rotating file sink
+        std::string ffmpegFile = "ffmpeg.log";
+        if (props.count("ffmpeg_file")) ffmpegFile = props["ffmpeg_file"];
+        std::string ffmpegPath = std::filesystem::path(logDirectory).append(ffmpegFile).string();
+        size_t ffmpegMaxSize = maxFileSize;
+        size_t ffmpegMaxFiles = maxFiles;
+        if (props.count("ffmpeg_max_size")) {
+            try { ffmpegMaxSize = static_cast<size_t>(std::stoull(props["ffmpeg_max_size"])); } catch(...) {}
+        }
+        if (props.count("ffmpeg_max_files")) {
+            try { ffmpegMaxFiles = static_cast<size_t>(std::stoul(props["ffmpeg_max_files"])); } catch(...) {}
+        }
+        auto ffmpeg_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(ffmpegPath, ffmpegMaxSize, ffmpegMaxFiles);
+        // ffmpeg level
+        if (props.count("ffmpeg_level")) {
+            std::string lvl = props["ffmpeg_level"];
+            for (auto &c : lvl) c = static_cast<char>(::toupper(c));
+            if (lvl == "TRACE") ffmpeg_sink->set_level(spdlog::level::trace);
+            else if (lvl == "DEBUG") ffmpeg_sink->set_level(spdlog::level::debug);
+            else if (lvl == "INFO") ffmpeg_sink->set_level(spdlog::level::info);
+            else if (lvl == "WARN") ffmpeg_sink->set_level(spdlog::level::warn);
+            else if (lvl == "ERROR") ffmpeg_sink->set_level(spdlog::level::err);
+            else if (lvl == "CRITICAL") ffmpeg_sink->set_level(spdlog::level::critical);
+        } else {
+            ffmpeg_sink->set_level(spdlog::level::trace);
+        }
+        if (props.count("ffmpeg_pattern")) ffmpeg_sink->set_pattern(props["ffmpeg_pattern"]);
+        else ffmpeg_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+
+        m_ffmpeg_logger = std::make_shared<spdlog::logger>("ffmpeg", ffmpeg_sink);
+        m_ffmpeg_logger->set_level(ffmpeg_sink->level());
+        spdlog::register_logger(m_ffmpeg_logger);
         
         m_initialized = true;
         
@@ -156,6 +189,10 @@ void LogManager::shutdown()
     
     if (m_logger) {
         m_logger->flush();
+        if (m_ffmpeg_logger) {
+            m_ffmpeg_logger->flush();
+            m_ffmpeg_logger.reset();
+        }
         spdlog::drop_all();
         m_logger.reset();
     }

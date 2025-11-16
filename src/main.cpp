@@ -70,25 +70,11 @@ int main(int argc, char *argv[])
     a.setApplicationName("BilibiliPlayer");
     a.setApplicationVersion("1.0.0");
 
-    const QStringList uiLanguages = QLocale::system().uiLanguages();
-    for (const QString &locale : uiLanguages) {
-        const QString baseName = "BilibiliPlayer_" + QLocale(locale).name();
-        if (translator.load(":/i18n/" + baseName)) {
-            a.installTranslator(&translator);
-            break;
-        }
-    }
     try {
-        // Initialize with default workspace directory
+        // Initialize with default workspace directory. Keep this fast; defer
+        // non-critical UI init (translator load, image format logging) until
+        // after the event loop starts to improve cold-start time.
         APP_CONTEXT.initialize();
-        
-        // Log supported image formats
-        QList<QByteArray> formats = QImageReader::supportedImageFormats();
-        QString formatList;
-        for (const QByteArray& fmt : formats) {
-            formatList += QString::fromUtf8(fmt) + " ";
-        }
-        LOG_INFO("Qt supported image formats: {}", formatList.trimmed().toStdString());
     } catch (const std::exception& e) {
         qCritical() << "Initialization failed:" << e.what();
         QApplication::quit();
@@ -96,6 +82,30 @@ int main(int argc, char *argv[])
     MainWindow w;
     
     w.show();
+
+    // Defer loading translators and logging image formats to the event loop
+    // so startup isn't blocked by optional initialization. This is non-invasive
+    // — translator variable remains in-scope for the lifetime of the app.
+    QTimer::singleShot(0, [&a, &translator]() {
+        const QStringList uiLanguages = QLocale::system().uiLanguages();
+        for (const QString &locale : uiLanguages) {
+            const QString baseName = "BilibiliPlayer_" + QLocale(locale).name();
+            if (translator.load(":/i18n/" + baseName)) {
+                a.installTranslator(&translator);
+                break;
+            }
+        }
+
+        // Log supported image formats (non-critical diagnostic)
+        QList<QByteArray> formats = QImageReader::supportedImageFormats();
+        QString formatList;
+        for (const QByteArray& fmt : formats) {
+            formatList += QString::fromUtf8(fmt) + " ";
+        }
+        LOG_INFO("Qt supported image formats: {}", formatList.trimmed().toStdString());
+    });
+
+    // No special harness flags here; keep startup behavior unchanged.
 
     // Handle cleanup on app quit (wrap in try/catch to ensure errors are logged)
     QObject::connect(&a, &QApplication::aboutToQuit, []() {

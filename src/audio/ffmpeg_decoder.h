@@ -64,7 +64,7 @@ public:
      * If decoder is not yet initialized, future ends with invalid AudioFormat(see AudioFormat::isValid).
      * @return Future that will hold AudioFormat once available
      */
-    std::future<AudioFormat> getAudioFormatAsync() const;
+    std::future<AudioFormat> getAudioFormatAsync(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) const;
     // std::future<std::string> getCodecNameAsync() const;
     
     std::future<double> getDurationAsync() const;
@@ -116,6 +116,7 @@ private:
     mutable std::mutex audioFormatMutex_;
     mutable std::condition_variable audioFormatCondition_;
     AudioFormat audio_format_;
+    std::atomic<bool> audio_format_verified_{false};
     
     // Custom AVIO
     AVIOContext* avio_ctx_;

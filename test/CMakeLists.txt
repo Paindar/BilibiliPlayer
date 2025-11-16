@@ -104,6 +104,7 @@ target_link_libraries(theme_impl PUBLIC
 # 5. FFmpeg Decoder implementation
 add_library(ffmpeg_impl STATIC
     ${CMAKE_SOURCE_DIR}/src/audio/ffmpeg_decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/audio/ffmpeg_log.cpp
 	${CMAKE_SOURCE_DIR}/src/audio/audio_event_processor.cpp
 )
 target_include_directories(ffmpeg_impl PUBLIC ${CMAKE_SOURCE_DIR}/src)
