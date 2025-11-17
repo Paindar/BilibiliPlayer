@@ -13,6 +13,9 @@
 #include <QAction>
 #include <QEvent>
 #include <QTimer>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QDir>
 #include <QPropertyAnimation>
 #include <manager/application_context.h>
 
@@ -71,6 +74,12 @@ void PlaylistPage::setupUI()
     ui->songCountLabel->setText("0 songs");
     ui->descriptionLabel->setText("");
     ui->coverLabel->setText("No Cover");
+
+    // Connect Add Local Files button (added to .ui)
+    if (ui->addLocalFilesButton) {
+        connect(ui->addLocalFilesButton, &QPushButton::clicked,
+                this, &PlaylistPage::onAddLocalFilesClicked);
+    }
 }
 
 void PlaylistPage::SetupPlaylistManager()
@@ -474,4 +483,30 @@ void PlaylistPage::resetColumnWidths()
     header->resizeSection(3, 80);   // Duration
     
     LOG_DEBUG("Reset column widths to defaults");
+}
+
+void PlaylistPage::onAddLocalFilesClicked()
+{
+    if (!m_playlistManager || m_currentPlaylistId.isNull()) {
+        LOG_WARN("Cannot add local files: no playlist manager or current playlist");
+        return;
+    }
+
+    QStringList paths = QFileDialog::getOpenFileNames(this,
+                                                     tr("Select Local Media"),
+                                                     QDir::homePath(),
+                                                     tr("Audio Files (*.mp3 *.wav *.flac);;All Files (*)"));
+    if (paths.isEmpty()) return;
+
+    for (const QString& path : paths) {
+        playlist::SongInfo song;
+        song.title = QFileInfo(path).baseName();
+        song.uploader = QString();
+        song.platform = 0; // Local platform
+        song.duration = 0;
+        song.filepath = path; // PlaylistManager will convert to file:// if necessary
+        song.coverName = QString();
+        song.args = QString();
+        addSong(song);
+    }
 }

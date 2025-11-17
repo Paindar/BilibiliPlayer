@@ -14,6 +14,7 @@
 #include <sstream>
 #include <fmt/format.h>
 #include <util/md5.h>
+#include <QUrl>
 
 PlaylistManager::PlaylistManager(ConfigManager* configManager, QObject* parent)
     : QObject(parent)
@@ -382,7 +383,25 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
         return false;
     }
     playlist::SongInfo songWithFilepath = song;
-    songWithFilepath.filepath = generateStreamingFilepath(songWithFilepath);
+    // If the provided filepath is a local file (file:// or absolute path), keep it as a file:// reference
+    QUrl maybeUrl = QUrl::fromUserInput(song.filepath);
+    if (maybeUrl.isLocalFile()) {
+        if (maybeUrl.isRelative()) {
+            LOG_WARN("Provided local file path is relative: {}", song.filepath.toStdString());
+            return songWithFilepath.args.isEmpty() ? false : true;
+        } else {
+            songWithFilepath.filepath = maybeUrl.toLocalFile();
+        }
+    } else {
+        // Non-local sources are converted to internal streaming filepaths
+        if (songWithFilepath.args.isEmpty()) {
+            LOG_WARN("Cannot add song with empty args for non-local source: {}", song.filepath.toStdString());
+            return false;
+        } else {
+            songWithFilepath.filepath = generateStreamingFilepath(songWithFilepath);
+        }
+        
+    }
     
     m_playlistSongs[playlistId].append(songWithFilepath);
     auto playlistIt = m_playlists.find(playlistId);

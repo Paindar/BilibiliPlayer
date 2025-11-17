@@ -59,6 +59,7 @@ private slots:
     void onNetworkDownload(QString url, QString savePath);
     void showContextMenu(const QPoint& pos);
     void deleteSong();
+    void onAddLocalFilesClicked();
 
 private:
     void setupUI();

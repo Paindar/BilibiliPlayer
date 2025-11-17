@@ -186,6 +186,13 @@
                </property>
               </widget>
              </item>
+                <item>
+                <widget class="QPushButton" name="addLocalFilesButton">
+                    <property name="text">
+                    <string>Add Local Files</string>
+                    </property>
+                </widget>
+                </item>
              <item>
               <spacer name="infoVerticalSpacer">
                <property name="orientation">

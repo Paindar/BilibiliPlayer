@@ -13,7 +13,8 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools Concurre
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools Concurrent)
 
 # Set the translation files path
-set(TS_FILES resource/lang/BilibiliPlayer_zh_CN.ts)
+set(TS_FILES    resource/lang/BilibiliPlayer_zh_CN.ts
+                resource/lang/BilibiliPlayer_en_US.ts)
 
 
 enable_testing()
