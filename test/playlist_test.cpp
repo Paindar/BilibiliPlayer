@@ -1,3 +1,78 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+
+#include "playlist/playlist.h"
+#include <QUuid>
+
+using namespace playlist;
+
+TEST_CASE("SongInfo equality and field checks", "[playlist][song]") {
+    SongInfo a;
+    a.title = "Test Song";
+    a.uploader = "Artist";
+    a.platform = 1;
+    a.duration = 123;
+    a.filepath = "/tmp/test.wav";
+
+    SongInfo b = a;
+
+    SECTION("copied song equals original") {
+        REQUIRE(a == b);
+    }
+
+    SECTION("difference in title makes songs unequal") {
+        b.title = "Other";
+        REQUIRE_FALSE(a == b);
+    }
+
+    SECTION("difference in uploader makes songs unequal") {
+        b = a;
+        b.uploader = "Different";
+        REQUIRE_FALSE(a == b);
+    }
+
+    SECTION("difference in platform makes songs unequal") {
+        b = a;
+        b.platform = 2;
+        REQUIRE_FALSE(a == b);
+    }
+
+    SECTION("operator== ignores duration and filepath") {
+        b = a;
+        b.duration = 9999;
+        b.filepath = "C:/other.wav";
+        // operator== only compares title, uploader and platform
+        REQUIRE(a == b);
+    }
+}
+
+TEST_CASE("PlaylistInfo equality and uuid behavior", "[playlist][playlistinfo]") {
+    PlaylistInfo p1;
+    p1.name = "My Playlist";
+    p1.creator = "Creator";
+    p1.description = "Desc";
+    p1.coverUri = "cover.png";
+    p1.uuid = QUuid::createUuid();
+
+    PlaylistInfo p2 = p1;
+
+    SECTION("copied playlist equals original based on uuid") {
+        REQUIRE(p1 == p2);
+    }
+
+    SECTION("different uuid makes playlists unequal") {
+        p2.uuid = QUuid::createUuid();
+        REQUIRE_FALSE(p1 == p2);
+    }
+
+    SECTION("two default-constructed playlists have null uuids and compare equal") {
+        PlaylistInfo d1;
+        PlaylistInfo d2;
+        // both uuids are null (QUuid()) so equality by uuid holds
+        REQUIRE(d1 == d2);
+    }
+}
+
 /**
  * Playlist Entity Unit Tests
  * 

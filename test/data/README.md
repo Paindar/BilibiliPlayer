@@ -1,3 +1,18 @@
+# Test data
+
+This directory contains compact, pre-generated test assets encoded as hex strings to avoid binary blobs in the repository.
+
+Usage:
+- Use the helper in `test/test_utils.h` to decode a `.hex` file and write the real binary asset before running tests.
+- Example in C++ tests:
+
+```cpp
+#include "test/test_utils.h"
+testutils::writeHexAsset("test/data/silence.wav.hex", "build/test_assets/silence.wav");
+```
+
+Current assets:
+- `silence.wav.hex` — a minimal 1-sample WAV (mono, 8kHz, 16-bit) useful for format-detection tests.
 # Test Data Directory
 
 This directory contains test data files used by the BilibiliPlayer test suite.

@@ -27,6 +27,7 @@ add_executable(BilibiliPlayerTest
     # Playlist manager test
     playlist_manager_test.cpp
     playlist_test.cpp
+    playlist_local_add_test.cpp
 
     # Theme manager test
     theme_manager_test.cpp
@@ -34,6 +35,8 @@ add_executable(BilibiliPlayerTest
     # FFmpeg decoder test (requires FFmpeg)
     ffmpeg_decoder_test.cpp
     ffmpeg_decoder_wav_test.cpp
+    util/audio_generator.cpp
+    i18n_test.cpp
     
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
@@ -135,6 +138,7 @@ target_link_libraries(network_impl PUBLIC
     spdlog::spdlog
     fmt::fmt
 )
+
 # Enable UNIT_TEST for network implementation to build test methods
 target_compile_definitions(network_impl PRIVATE UNIT_TEST)
 
@@ -160,6 +164,8 @@ target_link_libraries(BilibiliPlayerTest PRIVATE
 )
 
 target_include_directories(BilibiliPlayerTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# Make the current test directory available for test-only headers (test/)
+target_include_directories(BilibiliPlayerTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(BilibiliPlayerTest PRIVATE UNIT_TEST)
 
 # Use C++17
@@ -175,6 +181,8 @@ add_custom_command(TARGET BilibiliPlayerTest POST_BUILD
         "$<TARGET_FILE_DIR:BilibiliPlayerTest>/data"
     COMMENT "Copying test data to build directory"
 )
+
+ 
 
 # Copy necessary DLLs on Windows after build
 if(WIN32)

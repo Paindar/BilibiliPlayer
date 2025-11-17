@@ -17,27 +17,21 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include "test_utils.h"
 
 using namespace network;
 
-// Qt application fixture for network operations
+// Qt application fixture for network operations (uses centralized helper)
 class QtAppFixture {
 public:
     static QtAppFixture& instance() {
         static QtAppFixture fixture;
         return fixture;
     }
-
 private:
     QtAppFixture() {
-        if (!QCoreApplication::instance()) {
-            int argc = 0;
-            char* argv[] = {nullptr};
-            app = std::make_unique<QCoreApplication>(argc, argv);
-        }
+        testutils::ensureQCoreApplication();
     }
-
-    std::unique_ptr<QCoreApplication> app;
 };
 
 // ========== IPlatform Implementation Tests ==========

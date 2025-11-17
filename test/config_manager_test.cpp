@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <QCoreApplication>
+#include "test_utils.h"
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
@@ -20,8 +21,7 @@ static bool writeConfigFile(const QString &path, const QString &content) {
 }
 
 TEST_CASE("ConfigManager: initialize with valid and invalid workspace and config file behaviors", "[ConfigManager]") {
-    int argc = 0;
-    QCoreApplication app(argc, nullptr);
+    testutils::ensureQCoreApplication();
 
     SECTION("initialize with invalid workspace") {
         ConfigManager cfg(nullptr);

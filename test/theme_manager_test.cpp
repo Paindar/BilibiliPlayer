@@ -11,28 +11,15 @@
 #include <QDir>
 #include <QSignalSpy>
 #include <filesystem>
+#include "test_utils.h"
 
-// Qt application fixture for theme tests
+// Qt application fixture for theme tests (uses centralized test helper)
 struct QtAppFixture {
-    static int argc;
-    static char* argv[];
-    static QCoreApplication* app;
-    
     QtAppFixture() {
-        if (!app) {
-            app = new QCoreApplication(argc, argv);
-        }
+        testutils::ensureQCoreApplication();
     }
-    
-    ~QtAppFixture() {
-        // Don't delete app here, let it persist
-    }
+    ~QtAppFixture() {}
 };
-
-int QtAppFixture::argc = 1;
-char arg0[] = "test";
-char* QtAppFixture::argv[] = {arg0, nullptr};
-QCoreApplication* QtAppFixture::app = nullptr;
 
 TEST_CASE("ThemeManager built-in themes", "[ThemeManager]") {
     QtAppFixture fixture;
