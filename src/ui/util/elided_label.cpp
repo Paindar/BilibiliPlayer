@@ -89,8 +89,8 @@ void ScrollingLabel::paintEvent(QPaintEvent* event) {
     QFontMetrics metrics(font());
     int textWidth = metrics.horizontalAdvance(m_fullText);
     
-    LOG_DEBUG("ScrollingLabel::paintEvent: scrollOffset={}, textWidth={}, labelWidth={}, font={}",
-              m_scrollOffset, textWidth, width(), font().toString().toStdString());
+    // LOG_DEBUG("ScrollingLabel::paintEvent: scrollOffset={}, textWidth={}, labelWidth={}, font={}",
+    //           m_scrollOffset, textWidth, width(), font().toString().toStdString());
     
     // If textWidth is 0, font metrics failed - fall back to showing text normally
     if (textWidth == 0) {
