@@ -137,24 +137,40 @@ void AudioPlayerController::playPlaylist(const QUuid& playlistId, int startIndex
         return;
     }
     
-    // Validate start index
-    if (startIndex < 0 || startIndex >= songs.size()) {
-        startIndex = 0;
-    }
 
-    // Set new playlist
-    std::scoped_lock locker(m_stateMutex);
-    m_currentPlaylistId = playlistId;
-    m_currentPlaylist = songs;
-    m_currentIndex = startIndex;
-    
-    // Setup random order if needed
-    if (m_playMode == playlist::PlayMode::Random) {
-        setupRandomGenerator();
+    // Set new playlist. Copy minimal data for emission while holding the lock,
+    // then release the lock and emit without holding `m_stateMutex`.
+    playlist::SongInfo songCopy;
+    int songIndex = -1;
+    {
+        std::scoped_lock locker(m_stateMutex);
+        m_currentPlaylistId = playlistId;
+        m_currentPlaylist = songs;
+        m_currentIndex = startIndex;
+
+        // Setup random order if needed (create shuffled copy while holding lock)
+        if (m_playMode == playlist::PlayMode::Random) {
+            if (m_randomPlayOrder.size() != m_currentPlaylist.size()) {
+                setupRandomGenerator();
+            }
+        }
+
+        // Capture a local copy for safe emission outside the lock
+        if (m_currentIndex >= 0 && m_currentIndex < m_currentPlaylist.size()) {
+            songCopy = m_currentPlaylist[m_currentIndex];
+            songIndex = m_currentIndex;
+        } else {
+            LOG_WARN(" Start index {} is out of bounds for playlist with {} songs, defaulting to no current song", startIndex, songs.size());
+            m_currentIndex = songIndex = 0;
+        }
     }
 
     LOG_INFO(" Starting playlist playback with {} songs, starting at index {}", songs.size(), startIndex);
-    emit currentSongChanged(m_currentPlaylist[m_currentIndex], m_currentIndex);
+    if (songIndex >= 0) {
+        emit currentSongChanged(songCopy, songIndex);
+    } else {
+        emit currentSongChanged(playlist::SongInfo(), -1);
+    }
     // Send Start event to event processor
     if (isPlaying()) {
         m_eventProcessor->postEvent(audio::AudioEventProcessor::STOP);
@@ -177,30 +193,29 @@ void AudioPlayerController::playPlaylistFromSong(const QUuid& playlistId, const 
     }
 
     int startIndex = -1;
-    {
-        std::scoped_lock locker(m_stateMutex);
-        
-        // Find the starting song index
-        for (int i = 0; i < songs.size(); ++i) {
-            if (songs[i] == startSong) {
-                startIndex = i;
-                break;
-            }
-        }
-        
-        if (startIndex == -1) {
-            emit playbackError("Starting song not found in playlist");
-            return;
+    // Find the starting song index
+    for (int i = 0; i < songs.size(); ++i) {
+        if (songs[i] == startSong) {
+            startIndex = i;
+            break;
         }
     }
-    // Set new playlist
-    std::scoped_lock locker(m_stateMutex);
-    m_currentPlaylistId = playlistId;
-    m_currentPlaylist = songs;
-    m_currentIndex = startIndex;
-    // Setup random order if needed
-    if (m_playMode == playlist::PlayMode::Random) {
-        setupRandomGenerator();
+    if (startIndex == -1) {
+        emit playbackError("Starting song not found in playlist");
+        return;
+    }
+    {
+        // Set new playlist
+        std::scoped_lock locker(m_stateMutex);
+        m_currentPlaylistId = playlistId;
+        m_currentPlaylist = songs;
+        m_currentIndex = startIndex;
+        // Setup random order if needed (create shuffled copy while holding lock)
+        if (m_playMode == playlist::PlayMode::Random) {
+            if (m_randomPlayOrder.size() != m_currentPlaylist.size()) {
+                setupRandomGenerator();
+            }
+        }
     }
 
     LOG_INFO(" Starting playlist playback with {} songs, starting at index {}", songs.size(), startIndex);
@@ -619,6 +634,8 @@ void AudioPlayerController::frameTransmissionLoop()
             while (!success && retryCount < maxRetries && m_frameTransmissionActive.load()) {
                 if (!m_audioOutput->isInitialized() || !m_audioOutput->isPlaying()) {
                     // Audio worker not ready, wait a bit
+                    LOG_DEBUG(" Audio output not ready in frame transmission loop, isInitialized: {}, isPlaying: {}. Retrying...", 
+                              m_audioOutput->isInitialized(), m_audioOutput->isPlaying());
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
                     retryCount++;
                     continue;
@@ -638,6 +655,7 @@ void AudioPlayerController::frameTransmissionLoop()
                     // Wait time based on how long it takes to consume remaining buffer
                     double bufferDurationMs = (static_cast<double>(availableFrames) / frame->sample_rate) * 1000.0 * 0.5; // Wait for half buffer to clear
                     int waitMs = std::max(1, std::min(10, static_cast<int>(bufferDurationMs))); // Clamp between 1-10ms
+                    LOG_DEBUG(" Audio output buffer full (available frames: {}), waiting {} ms before retrying", availableFrames, waitMs);
                     std::this_thread::sleep_for(std::chrono::milliseconds(waitMs));
                     retryCount++;
                 }

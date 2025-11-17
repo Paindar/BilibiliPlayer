@@ -11,131 +11,189 @@
 namespace audio {
 void AudioPlayerController::onPlayEvent(const QVariantHash&)
 {
-    std::scoped_lock locker(m_stateMutex, m_componentMutex);
-    
-    switch (m_currentState) {
-    case PlaybackState::Playing:
-        LOG_WARN(" Play event received but playback is already in progress");
-        break;
-    case PlaybackState::Paused:
-        if (m_decoder) {
-            m_decoder->resumeDecoding();
-        } 
-        if (m_audioOutput) {
-            m_audioOutput->start();
-            m_currentState = PlaybackState::Playing;
-            m_positionTimer->start();
-            LOG_INFO(" Playback resumed");
-            emit playbackStateChanged(m_currentState);
-        } else {
-            LOG_ERROR(" Audio output is not initialized, cannot resume playback");
-            m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_COMPLETE);
-        }
-        break;
-    case PlaybackState::Stopped:
-        if (m_currentPlaylist.isEmpty()) {
-            LOG_WARN(" Play event received but playlist is empty");
-        }
-        if (m_currentIndex < 0 || m_currentIndex >= m_currentPlaylist.size()) {
-            LOG_WARN(" Invalid current song index");
-            return;
-        }
-        //Robustness: Ensure components' status
-        // Clean up previous component: stop/pause but KEEP instances for reuse
-        do {
-            bool success = true;
-            if (m_frameQueue->empty() == false) {
-                success = false;
-                LOG_ERROR(" Frame queue is not empty before starting new playback");
-            }
-            if (m_playbackWatcherThread) {
-                success = false;
-                LOG_ERROR(" Playback watcher thread is still running before starting new playback");
+    // Handle quick transitions under lock, then perform the heavy work and emission outside.
+    PlayOperationResult opResult{PlayOperationResult::Success, QString{}};
+    PlaybackState stateCopy = m_currentState;
+    // Data needed for potential error signal (song)
+    playlist::SongInfo songCopy;
+    int songIndex = -1;
+    bool shouldStartPlayback = false;
+
+    // Scoped checks: perform only quick checks while holding locks, capture song/index to operate on.
+    {
+        std::scoped_lock locker(m_stateMutex, m_componentMutex);
+
+        switch (m_currentState) {
+        case PlaybackState::Playing:
+            LOG_WARN(" Play event received but playback is already in progress");
+            break;
+        case PlaybackState::Paused:
+            if (m_decoder) {
+                m_decoder->resumeDecoding();
             }
             if (m_audioOutput) {
-                success = false;
-                LOG_ERROR(" Audio output is not stopped before starting new playback");
+                m_audioOutput->start();
+                m_currentState = PlaybackState::Playing;
+                m_positionTimer->start();
+                LOG_INFO(" Playback resumed");
+                stateCopy = m_currentState;
+            } else {
+                LOG_ERROR(" Audio output is not initialized, cannot resume playback");
+                m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_COMPLETE);
             }
-            if (m_decoder) {
-                success = false;
-                LOG_ERROR(" Decoder is not stopped before starting new playback");
+            break;
+        case PlaybackState::Stopped:
+            if (m_currentPlaylist.isEmpty()) {
+                LOG_WARN(" Play event received but playlist is empty");
             }
-            if (m_currentStream) {
-                success = false;
-                LOG_ERROR(" Current stream is not released before starting new playback");
-            }
-            if (!success) {
-                LOG_WARN(" Previous playback components not properly cleaned up");
-                m_eventProcessor->postEvent(audio::AudioEventProcessor::STOP);
+            if (m_currentIndex < 0 || m_currentIndex >= m_currentPlaylist.size()) {
+                LOG_WARN(" Invalid current song index");
                 return;
             }
-            playCurrentSongUnsafe();
-        }while (false);
-        break;
-    default:
-        LOG_ERROR(" Unknown playback state: {}", magic_enum::enum_name(m_currentState));
+
+            //Robustness: Ensure components' status
+            // Clean up previous component: stop/pause but KEEP instances for reuse
+            {
+                bool success = true;
+                if (m_frameQueue->empty() == false) {
+                    success = false;
+                    LOG_ERROR(" Frame queue is not empty before starting new playback");
+                }
+                if (m_playbackWatcherThread) {
+                    success = false;
+                    LOG_ERROR(" Playback watcher thread is still running before starting new playback");
+                }
+                if (m_audioOutput) {
+                    success = false;
+                    LOG_ERROR(" Audio output is not stopped before starting new playback");
+                }
+                if (m_decoder) {
+                    success = false;
+                    LOG_ERROR(" Decoder is not stopped before starting new playback");
+                }
+                if (m_currentStream) {
+                    success = false;
+                    LOG_ERROR(" Current stream is not released before starting new playback");
+                }
+                if (!success) {
+                    LOG_WARN(" Previous playback components not properly cleaned up");
+                    m_eventProcessor->postEvent(audio::AudioEventProcessor::STOP);
+                    return;
+                }
+            }
+
+            // Capture song/index for starting playback outside the lock
+            songCopy = m_currentPlaylist[m_currentIndex];
+            songIndex = m_currentIndex;
+            shouldStartPlayback = true;
+            break;
+        default:
+            LOG_ERROR(" Unknown playback state: {}", magic_enum::enum_name(m_currentState));
+        }
     }
+
+    // If we need to start playback, do it now outside the controller locks
+    if (shouldStartPlayback) {
+        opResult = playCurrentSongUnsafe(songCopy, songIndex);
+        std::scoped_lock locker(m_stateMutex);
+        stateCopy = m_currentState;
+    }
+
+    // Emit signals outside of locks
+    if (opResult.kind == PlayOperationResult::SongLoadError) {
+        emit songLoadError(songCopy, opResult.message);
+        m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_ERROR,
+                                    QVariantHash{{QStringLiteral("error"), QVariant(opResult.message)}});
+    } else if (opResult.kind == PlayOperationResult::PlaybackError) {
+        emit playbackError(opResult.message);
+        m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_ERROR,
+                                    QVariantHash{{QStringLiteral("error"), QVariant(opResult.message)}});
+    }
+
+    // Emit state change (if any)
+    emit playbackStateChanged(stateCopy);
 }
 
 void AudioPlayerController::onPauseEvent(const QVariantHash&)
 {
-    std::scoped_lock locker(m_stateMutex, m_componentMutex);
-    
-    switch (m_currentState) {
-    case PlaybackState::Playing:
-        if (m_decoder) {
-            m_decoder->pauseDecoding();
+    PlaybackState stateCopy;
+    {
+        std::scoped_lock locker(m_stateMutex, m_componentMutex);
+        switch (m_currentState) {
+        case PlaybackState::Playing:
+            if (m_decoder) {
+                m_decoder->pauseDecoding();
+            }
+            if (m_audioOutput) {
+                m_audioOutput->pause();
+            }
+            if (m_positionTimer) {
+                m_positionTimer->stop();
+            }
+
+            m_currentState = PlaybackState::Paused;
+
+            LOG_INFO(" Playback paused");
+            break;
+        case PlaybackState::Paused:
+            LOG_WARN(" Pause event received but playback is already paused");
+            break;
+        case PlaybackState::Stopped:
+            LOG_WARN(" Pause event received but playback is already stopped");
+            break;
+        default:
+            LOG_ERROR(" Unknown playback state: {}", magic_enum::enum_name(m_currentState));
         }
-        if (m_audioOutput) {
-            m_audioOutput->pause();
-        }
-        if (m_positionTimer) {
-            m_positionTimer->stop();
-        }
-        
-        m_currentState = PlaybackState::Paused;
-        
-        LOG_INFO(" Playback paused");
-        emit playbackStateChanged(m_currentState);
-        break;
-    case PlaybackState::Paused:
-        LOG_WARN(" Pause event received but playback is already paused");
-        break;
-    case PlaybackState::Stopped:
-        LOG_WARN(" Pause event received but playback is already stopped");
-        break;
-    default:
-        LOG_ERROR(" Unknown playback state: {}", magic_enum::enum_name(m_currentState));
+        stateCopy = m_currentState;
     }
+
+    // Emit outside lock
+    emit playbackStateChanged(stateCopy);
 }
 
 void AudioPlayerController::onStopEvent(const QVariantHash&)
 {
-    std::scoped_lock locker(m_stateMutex, m_componentMutex);
-    switch (m_currentState) {
-    case PlaybackState::Playing:
-    case PlaybackState::Paused:
-        cleanPlayResourcesUnsafe();
-        m_currentState = PlaybackState::Stopped;
-    case PlaybackState::Stopped:
-        LOG_INFO(" Playback stopped");
-        break;
-    default:
-        LOG_ERROR(" Unknown playback state: {}", magic_enum::enum_name(m_currentState));
+    // Call cleanup outside locks. cleanPlayResourcesUnsafe will acquire locks internally as needed.
+    PlayOperationResult res = cleanPlayResources();
+
+    // Read state for emission
+    PlaybackState stateCopy;
+    qint64 posCopy = 0;
+    {
+        std::scoped_lock locker(m_stateMutex);
+        stateCopy = m_currentState;
+        posCopy = m_currentPosition;
+    }
+
+    // Emit after cleanup
+    emit playbackStateChanged(stateCopy);
+    emit positionChanged(posCopy);
+
+    if (res.kind == PlayOperationResult::PlaybackError) {
+        emit playbackError(res.message);
     }
 }
 
 void AudioPlayerController::onPlayFinishedEvent(const QVariantHash &)
 {
+    // Perform cleanup outside locks
+    PlayOperationResult res = cleanPlayResources();
+
+    // Read state for emission
+    PlaybackState stateCopy;
     {
-        std::scoped_lock locker(m_stateMutex, m_componentMutex);
-        cleanPlayResourcesUnsafe();
-        m_currentState = PlaybackState::Stopped;
-        m_positionTimer->stop();
-        LOG_INFO(" Playback finished");
-        emit playbackStateChanged(m_currentState);
-        emit playbackCompleted();
+        std::scoped_lock locker(m_stateMutex);
+        stateCopy = m_currentState;
     }
+
+    // Emit outside lock
+    emit playbackStateChanged(stateCopy);
+    emit playbackCompleted();
+
+    if (res.kind == PlayOperationResult::PlaybackError) {
+        emit playbackError(res.message);
+    }
+
     next();
 }
 
@@ -202,42 +260,34 @@ void AudioPlayerController::onFrameTransmissionErrorEvent(const QVariantHash& ar
                                 QVariantHash{{QString("error"), QVariant(QString("Frame transmission error"))}});
 }
 
-// Only can be called from onPlayEvent when holding all mutexes.
-void AudioPlayerController::playCurrentSongUnsafe()
+// Only can be called from onPlayEvent; expects caller to have captured song/index and calls this outside locks.
+PlayOperationResult AudioPlayerController::playCurrentSongUnsafe(const playlist::SongInfo& song, int index)
 {
-    const auto& song = m_currentPlaylist[m_currentIndex];
     LOG_INFO(" Playing song: {} by {}", song.title.toStdString(), song.uploader.toStdString());
-    
-    // Check if local file exists
+
     QString filepath = song.filepath;
     bool useStreaming = false;
     uint64_t expectedSize = 0;
-    
     if (filepath.isEmpty() || !isLocalFileAvailable(song)) {
-        // Generate streaming filepath
         useStreaming = true;
-
         LOG_INFO(" Using streaming for song: {}", song.title.toStdString());
     }
-    // Create decoder as shared_ptr so we can share it and pass the event processor
-    m_decoder = std::make_unique<FFmpegStreamDecoder>();
-    // Pass the controller's event processor to the decoder so it can post events
-    if (m_decoder && m_eventProcessor) {
-        m_decoder->setEventProcessor(m_eventProcessor);
+
+    // Create local instances for heavy resources so we don't hold controller locks while initializing them.
+    std::unique_ptr<FFmpegStreamDecoder> newDecoder = std::make_unique<FFmpegStreamDecoder>();
+    if (newDecoder && m_eventProcessor) {
+        newDecoder->setEventProcessor(m_eventProcessor);
     }
-    
-    // Prepare input and decoder
+    std::shared_ptr<std::istream> newStream;
+    std::shared_ptr<WASAPIAudioOutputUnsafe> newAudioOutput;
+
     bool opened = false;
     try {
         if (useStreaming) {
-            // Acquire real-time stream via NetworkManager
             auto platform = static_cast<network::PlatformType>(song.platform);
-
-            // Start both requests: expected size first (critical), and stream acquisition
             auto sizeFuture = NETWORK_MANAGER->getStreamSizeByParamsAsync(platform, song.args);
             auto streamFuture = NETWORK_MANAGER->getAudioStreamAsync(platform, song.args, filepath);
 
-            // Get expected size
             try {
                 expectedSize = sizeFuture.get();
             } catch (std::exception& e) {
@@ -245,134 +295,154 @@ void AudioPlayerController::playCurrentSongUnsafe()
                 expectedSize = 0;
             }
 
-            m_currentStream = streamFuture.get();
-            if (!m_currentStream) {
+            newStream = streamFuture.get();
+            if (!newStream) {
                 throw std::runtime_error("Failed to acquire streaming input");
             }
-            // Todo test if it is still good after removing waiting for at least some data
-            opened = m_decoder->initialize(m_currentStream, m_frameQueue);
+            opened = newDecoder->initialize(newStream, m_frameQueue);
         } else {
-            // Use local file stream
             auto fs = std::make_shared<std::ifstream>(filepath.toStdString(), std::ios::binary);
             if (!fs->is_open()) {
                 throw std::runtime_error("Failed to open local file");
             }
             expectedSize = fs->seekg(0, std::ios::end).tellg();
             fs->seekg(0, std::ios::beg);
-            opened = m_decoder->initialize(fs, m_frameQueue);
-            m_currentStream = fs;
+            opened = newDecoder->initialize(fs, m_frameQueue);
+            newStream = fs;
         }
     } catch (const std::exception& e) {
         QString error = QString("Stream open error: %1").arg(e.what());
-        emit songLoadError(song, error);
         m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_ERROR,
-                                    QVariantHash{{QString("error"), QVariant(error)}});
-        return;
+                                    QVariantHash{{QStringLiteral("error"), QVariant(error)}});
+        return PlayOperationResult{PlayOperationResult::SongLoadError, error};
     }
 
     if (!opened) {
         QString error = QString("Failed to open audio stream for: %1").arg(filepath);
-        emit songLoadError(song, error);
         m_eventProcessor->postEvent(audio::AudioEventProcessor::PLAYBACK_ERROR,
-                                    QVariantHash{{QString("error"), QVariant(error)}});
-        return;
+                                    QVariantHash{{QStringLiteral("error"), QVariant(error)}});
+        return PlayOperationResult{PlayOperationResult::SongLoadError, error};
     }
 
     LOG_DEBUG(" Created new decoder instance for new song");
-    // Start decoding to get audio format
-    if (!m_decoder->startDecoding(expectedSize)) {
-        emit playbackError("Failed to start decoder");
-        return;
+    if (!newDecoder->startDecoding(expectedSize)) {
+        QString error = QStringLiteral("Failed to start decoder");
+        return PlayOperationResult{PlayOperationResult::PlaybackError, error};
     }
 
-    // Wait for audio format to be available
-    auto formatFuture = m_decoder->getAudioFormatAsync();
+    auto formatFuture = newDecoder->getAudioFormatAsync();
     auto fmt = formatFuture.get();
     if (!fmt.isValid()) {
-        emit playbackError("Decoder did not provide a valid audio format");
-        return;
+        QString error = QStringLiteral("Decoder did not provide a valid audio format");
+        return PlayOperationResult{PlayOperationResult::PlaybackError, error};
     }
     LOG_INFO(" Audio format: {} Hz, {} channels, {} bits per sample",
              fmt.sample_rate, fmt.channels, fmt.bits_per_sample);
 
-    // Ensure the audio worker exists and initialize WASAPI on its thread
-    m_audioOutput = std::make_unique<WASAPIAudioOutputUnsafe>();
-    if (!m_audioOutput->initialize(fmt.sample_rate, fmt.channels, fmt.bits_per_sample)) {
-        emit playbackError("Failed to initialize WASAPI audio player");
-        return;
+    newAudioOutput = std::make_shared<WASAPIAudioOutputUnsafe>();
+    if (!newAudioOutput->initialize(fmt.sample_rate, fmt.channels, fmt.bits_per_sample)) {
+        QString error = QStringLiteral("Failed to initialize WASAPI audio player");
+        return PlayOperationResult{PlayOperationResult::PlaybackError, error};
     }
-    m_audioOutput->start();
-    // Start frame transmission thread
-    m_frameTransmissionActive.store(true);
-    m_frameTransmissionThread = std::make_shared<std::thread>([this]() {
-        try {
-            this->frameTransmissionLoop();
-        } catch (const std::exception& e) {
-            LOG_ERROR(" frameTransmissionLoop threw exception: {}", e.what());
-            std::terminate();
-        } catch (...) {
-            LOG_ERROR(" frameTransmissionLoop threw unknown exception");
-            std::terminate();
-        }
-    });
 
-    // Update playback state
-    m_currentState = PlaybackState::Playing;
-    m_currentPosition = 0;
-    if (m_positionTimer->isActive()) {
-        LOG_WARN(" Position timer is already active when starting playback");
+    // Commit initialized resources into controller state under lock, then start runtime threads.
+    {
+        std::scoped_lock locker(m_stateMutex, m_componentMutex);
+        m_decoder = std::move(newDecoder);
+        m_currentStream = newStream;
+        m_audioOutput = std::move(newAudioOutput);
+        m_currentState = PlaybackState::Playing;
+        m_currentPosition = 0;
+        m_frameTransmissionActive.store(true);
+        m_audioOutput->start();
+        m_positionTimer->start();
+        // Start frame transmission thread now that members are in place
+        m_frameTransmissionThread = std::make_shared<std::thread>([this]() {
+            try {
+                this->frameTransmissionLoop();
+            } catch (const std::exception& e) {
+                LOG_ERROR(" frameTransmissionLoop threw exception: {}", e.what());
+                std::terminate();
+            } catch (...) {
+                LOG_ERROR(" frameTransmissionLoop threw unknown exception");
+                std::terminate();
+            }
+        });
     }
-    // If the timer is already running, it will be stopped and restarted. 
-    // This will also change its id().
-    m_positionTimer->start();
-    
-    emit playbackStateChanged(m_currentState);
-    emit positionChanged(m_currentPosition);
+
+    // Notify success to any monitoring systems via event processor if needed
+    return PlayOperationResult{PlayOperationResult::Success, QString{}};
 }
 
 // Unsafe variant: caller MUST hold m_stateMutex and m_componentMutex when calling this.
-void AudioPlayerController::cleanPlayResourcesUnsafe()
+PlayOperationResult AudioPlayerController::cleanPlayResources()
 {
     LOG_DEBUG(" Stopping current song playback");
-    // Stop frame transmission thread
-    m_frameTransmissionActive.store(false);
-    m_playbackWatcherExitFlag.store(true);
-    // Stop playback but keep components allocated for reuse
-    if (m_playbackWatcherThread) {
-        m_playbackWatcherThread->join();
-        m_playbackWatcherThread.reset();
+
+    // Snapshot and clear controller-owned resources under lock, then perform blocking cleanup outside lock.
+    std::shared_ptr<std::thread> playbackWatcherThreadLocal;
+    std::shared_ptr<std::thread> frameTransmissionThreadLocal;
+    std::shared_ptr<std::istream> currentStreamLocal;
+    std::shared_ptr<AudioFrameQueue> frameQueueLocal;
+    std::shared_ptr<WASAPIAudioOutputUnsafe> audioOutputLocal;
+    std::unique_ptr<FFmpegStreamDecoder> decoderLocal;
+
+    {
+        std::scoped_lock locker(m_stateMutex, m_componentMutex);
+        m_frameTransmissionActive.store(false);
+        m_playbackWatcherExitFlag.store(true);
+
+        playbackWatcherThreadLocal = std::move(m_playbackWatcherThread);
+        frameTransmissionThreadLocal = std::move(m_frameTransmissionThread);
+        currentStreamLocal = std::move(m_currentStream);
+        audioOutputLocal = std::move(m_audioOutput);
+        decoderLocal = std::move(m_decoder);
+        frameQueueLocal = m_frameQueue;
+
+        m_frameQueue = std::make_shared<AudioFrameQueue>();
+        m_currentPosition = 0;
+        m_currentState = PlaybackState::Stopped;
+    }
+
+    // Perform blocking operations outside the lock
+    if (playbackWatcherThreadLocal && playbackWatcherThreadLocal->joinable()) {
+        playbackWatcherThreadLocal->join();
         LOG_DEBUG(" Joined playback watcher thread during stop");
     }
-    LOG_DEBUG(" Clearing frame queue during stop");
-    m_frameQueue->clean();
-    if (m_frameTransmissionThread) {
-        if (m_frameTransmissionThread->joinable()) {
-            m_frameTransmissionThread->join();
-        }
-        m_frameTransmissionThread.reset();
+
+    if (frameQueueLocal) {
+        frameQueueLocal->clean();
+        LOG_DEBUG(" Cleared frame queue during stop");
+    }
+
+    if (frameTransmissionThreadLocal && frameTransmissionThreadLocal->joinable()) {
+        frameTransmissionThreadLocal->join();
         LOG_DEBUG(" Joined frame transmission thread during stop");
     }
-    if (m_currentStream) {
-        LOG_DEBUG(" Releasing current stream reference during stop");
-        m_currentStream.reset();
+
+    if (currentStreamLocal) {
+        currentStreamLocal.reset();
+        LOG_DEBUG(" Released current stream reference during stop");
     }
-    if (m_audioOutput) {
-        m_audioOutput->stop();
-        m_audioOutput.reset();
+
+    if (audioOutputLocal) {
+        audioOutputLocal->stop();
+        audioOutputLocal.reset();
         LOG_DEBUG(" Released audio worker instance during stop");
     }
-    if (m_decoder) {
-        m_decoder->pauseDecoding(); // Stop decoding
-        m_decoder.reset();
+
+    if (decoderLocal) {
+        decoderLocal->pauseDecoding();
+        decoderLocal.reset();
         LOG_DEBUG(" Released decoder instance during stop");
     }
-    m_positionTimer->stop();    
-    m_currentState = PlaybackState::Stopped;
-    m_currentPosition = 0;
-    
+
+    if (m_positionTimer) {
+        m_positionTimer->stop();
+    }
+
     LOG_INFO(" Playback stopped");
-    emit playbackStateChanged(m_currentState);
-    emit positionChanged(m_currentPosition);
+    return PlayOperationResult{PlayOperationResult::Success, QString{}};
 }
 // void AudioPlayerController::onSetVolumeEvent(const QVariantHash&){
 // }

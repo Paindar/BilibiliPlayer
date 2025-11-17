@@ -42,6 +42,16 @@ struct PlaybackStatus {
     playlist::PlayMode playMode = playlist::PlayMode::PlaylistLoop;
 };
 
+// Result returned by operations that previously emitted signals while holding locks.
+struct PlayOperationResult {
+    enum Kind {
+        Success = 0,
+        SongLoadError = 1,
+        PlaybackError = 2
+    } kind = Success;
+    QString message;
+};
+
 class AudioPlayerController : public QObject
 {
     Q_OBJECT
@@ -108,8 +118,8 @@ private:
     QString generateStreamingFilepath(const playlist::SongInfo& song) const;
     bool isLocalFileAvailable(const playlist::SongInfo& song) const;
     void setupRandomGenerator();
-    void playCurrentSongUnsafe();
-    void cleanPlayResourcesUnsafe();
+    PlayOperationResult playCurrentSongUnsafe(const playlist::SongInfo& song, int index);
+    PlayOperationResult cleanPlayResources();
     
 
 private: // Event handlers (serialized execution)
