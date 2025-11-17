@@ -1,5 +1,5 @@
 #include "ffmpeg_log.h"
-#include <spdlog/spdlog.h>
+#include <log/log_manager.h>
 #include <mutex>
 
 extern "C" {
@@ -15,17 +15,17 @@ static void ffmpeg_log_callback(void* /*ptr*/, int level, const char* fmt, va_li
     std::lock_guard<std::mutex> lk(g_ffmpeg_log_mutex);
     // Map ffmpeg levels to spdlog levels
     if (level <= AV_LOG_PANIC) {
-        spdlog::critical("[ffmpeg] {}", buf);
+        LOG_FFMPEG_CRITICAL("{}", buf);
     } else if (level <= AV_LOG_FATAL) {
-        spdlog::critical("[ffmpeg] {}", buf);
+        LOG_FFMPEG_CRITICAL("{}", buf);
     } else if (level <= AV_LOG_ERROR) {
-        spdlog::error("[ffmpeg] {}", buf);
+        LOG_FFMPEG_ERROR("{}", buf);
     } else if (level <= AV_LOG_WARNING) {
-        spdlog::warn("[ffmpeg] {}", buf);
+        LOG_FFMPEG_WARN("{}", buf);
     } else if (level <= AV_LOG_INFO) {
-        spdlog::info("[ffmpeg] {}", buf);
+        LOG_FFMPEG_INFO("{}", buf);
     } else {
-        spdlog::debug("[ffmpeg] {}", buf);
+        LOG_FFMPEG_DEBUG("{}", buf);
     }
 }
 } // namespace
