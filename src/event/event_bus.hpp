@@ -124,11 +124,11 @@ private:
         return dispatcher;
     }
 public:
-    static unique_ptr<EventBus> Create() 
+    static shared_ptr<EventBus> Create() 
     {
     static atomic<int> indexCounter(0);
     int index = indexCounter.fetch_add(1, std::memory_order_relaxed);
-        return unique_ptr<EventBus>(new EventBus(index));
+        return shared_ptr<EventBus>(new EventBus(index));
     }
     size_t GetId() { return m_id;}
     template<typename EventType>

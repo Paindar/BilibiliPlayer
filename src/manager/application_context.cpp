@@ -165,7 +165,7 @@ void ApplicationContext::initializeNetworkManager()
         QDir().mkpath(platformDir);
         LOG_INFO("Created platform directory at {}", platformDir.toStdString());
     }
-    m_networkManager = std::make_unique<network::NetworkManager>();
+    m_networkManager = std::make_shared<network::NetworkManager>();
     m_networkManager->configure(platformDir, timeout, proxyUrl);
 
     LOG_DEBUG("NetworkManager initialized with config settings");

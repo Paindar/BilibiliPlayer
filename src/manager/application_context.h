@@ -80,11 +80,11 @@ private:
     
     // Smart pointers for automatic cleanup
     std::unique_ptr<ConfigManager> m_configManager;
-    std::unique_ptr<EventBus> m_eventBus;
+    std::shared_ptr<EventBus> m_eventBus;
     std::unique_ptr<ThemeManager> m_themeManager;
     std::unique_ptr<PlaylistManager> m_playlistManager;
     std::unique_ptr<audio::AudioPlayerController> m_audioPlayerController;
-    std::unique_ptr<network::NetworkManager> m_networkManager;
+    std::shared_ptr<network::NetworkManager> m_networkManager;
     
     bool m_initialized = false;
     int m_currentPhase = 0;
