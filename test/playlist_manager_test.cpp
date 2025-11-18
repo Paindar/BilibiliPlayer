@@ -96,30 +96,62 @@ TEST_CASE("PlaylistManager: song operations", "[playlist_manager][songs]") {
     QUuid currentPlaylist = mgr.getCurrentPlaylist();
     REQUIRE(currentPlaylist.isNull() == false);
 
-    playlist::SongInfo s;
-    s.title = "Song A";
-    s.uploader = "Artist";
-    s.platform = 1;
-    s.duration = 200;
-    s.filepath = "file://songA";
+    SECTION("CURD songinfo without author") {
+        playlist::SongInfo s{
+            .title = "Song A",
+            .uploader = "Artist",
+            .platform = 1,
+            .duration = 200,
+            .filepath = "file://songA"
+        };
 
-    REQUIRE(mgr.addSongToPlaylist(s, currentPlaylist) == true);
+        REQUIRE(mgr.addSongToPlaylist(s, currentPlaylist) == true);
 
-    // Iterate songs and verify
-    bool found = false;
-    mgr.iterateSongsInPlaylist(currentPlaylist, [&](const playlist::SongInfo& song){
-        if (song.title == s.title && song.uploader == s.uploader) { found = true; return false; }
-        return true;
-    });
-    REQUIRE(found == true);
+        // Iterate songs and verify
+        // Note: Local files are marked with platform=Local. Uploader is extracted from metadata or defaults to "local"
+        bool found = false;
+        mgr.iterateSongsInPlaylist(currentPlaylist, [&](const playlist::SongInfo& song){
+            if (song.title == s.title && song.uploader == s.uploader) { 
+                found = true;
+                return false;
+            }
+            return true;
+        });
+        REQUIRE(found == true);
 
-    // Remove by value
-    REQUIRE(mgr.removeSongFromPlaylist(s, currentPlaylist) == true);
+        // Remove by value
+        REQUIRE(mgr.removeSongFromPlaylist(s, currentPlaylist) == true);
 
-    // Verify removal
-    bool any = false;
-    mgr.iterateSongsInPlaylist(currentPlaylist, [&](const playlist::SongInfo&){ any = true; return false; });
-    REQUIRE(any == false);
+        // Verify removal
+        bool any = false;
+        mgr.iterateSongsInPlaylist(currentPlaylist, [&](const playlist::SongInfo&){ any = true; return false; });
+        REQUIRE(any == false);
+    }
+
+    SECTION("CURD songinfo without author") 
+    {
+        playlist::SongInfo s{
+            .title = "Song B",
+            .uploader = "",
+            .platform = 1,
+            .duration = 200,
+            .filepath = "file://songA"
+        };
+
+        REQUIRE(mgr.addSongToPlaylist(s, currentPlaylist) == true);
+
+        // Iterate songs and verify
+        // Note: Local files are marked with platform=Local. Uploader is extracted from metadata or defaults to "local"
+        bool found = false;
+        mgr.iterateSongsInPlaylist(currentPlaylist, [&](const playlist::SongInfo& song){
+            if (song.title == s.title && song.uploader == "local") { 
+                    found = true;
+                    return false;
+            }
+            return true;
+        });
+        REQUIRE(found == true);
+    }
 }
 
 TEST_CASE("PlaylistManager: save and load JSON roundtrip", "[playlist_manager][json]") {

@@ -1,6 +1,10 @@
 #include "playlist_manager.h"
 #include <config/config_manager.h>
 #include <log/log_manager.h>
+#include <network/platform/i_platform.h>
+#include <audio/ffmpeg_probe.h>
+#include <audio/taglib_cover.h>
+#include <util/cover_cache.h>
 #include <json/json.h>
 #include <QDir>
 #include <QFile>
@@ -15,6 +19,7 @@
 #include <fmt/format.h>
 #include <util/md5.h>
 #include <QUrl>
+#include <thread>
 
 PlaylistManager::PlaylistManager(ConfigManager* configManager, QObject* parent)
     : QObject(parent)
@@ -391,6 +396,13 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
             return songWithFilepath.args.isEmpty() ? false : true;
         } else {
             songWithFilepath.filepath = maybeUrl.toLocalFile();
+            // Mark as local media: set platform
+            // Uploader will be extracted from metadata in async probe, default to "local" if not available
+            if (songWithFilepath.uploader.isEmpty()) {
+                songWithFilepath.uploader = "local";
+            }
+            songWithFilepath.platform = static_cast<int>(network::PlatformType::Local);
+            LOG_DEBUG("Marked song as local: {} (platform={})", song.title.toStdString(), songWithFilepath.platform);
         }
     } else {
         // Non-local sources are converted to internal streaming filepaths
@@ -406,16 +418,127 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
     m_playlistSongs[playlistId].append(songWithFilepath);
     auto playlistIt = m_playlists.find(playlistId);
     QString playlistName = (playlistIt != m_playlists.end()) ? playlistIt.value().name : "Unknown";
+    
+    // If it's a local file, launch async duration and artist probe
+    QString filepathForProbe;
+    if (static_cast<network::PlatformType>(songWithFilepath.platform) == network::PlatformType::Local) {
+        filepathForProbe = songWithFilepath.filepath;
+    }
+    
     locker.unlock();
     
     // Emit signals
     emit songAdded(song, playlistId);
     emit playlistSongsChanged(playlistId);
     
-    LOG_INFO("Added song: {} to playlist: {} ({})",
+    // Async metadata probe for local files (non-blocking)
+    if (!filepathForProbe.isEmpty()) {
+        std::thread([this, filepathForProbe, playlistId, song]() {
+            // Probe comprehensive metadata in single pass (duration, artist, sample rate, etc.)
+            audio::AudioMetadata metadata = audio::FFmpegProbe::probeMetadata(filepathForProbe);
+            
+            LOG_DEBUG("Probed metadata for {}: duration={} ms, artist='{}', sampleRate={} Hz", 
+                     filepathForProbe.toStdString(), metadata.durationMs, 
+                     metadata.artist.toStdString(), metadata.sampleRate);
+            
+            // Update the song with probed metadata
+            QWriteLocker updateLocker(&m_dataLock);
+            if (m_playlistSongs.contains(playlistId)) {
+                for (auto& s : m_playlistSongs[playlistId]) {
+                    if (s.filepath == filepathForProbe && s.title == song.title) {
+                        // Update duration (from milliseconds to seconds)
+                        if (metadata.durationMs != INT_MAX) {
+                            s.duration = static_cast<int>(metadata.durationMs / 1000);
+                            LOG_INFO("Updated duration for song: {} = {} ms", s.title.toStdString(), metadata.durationMs);
+                        }
+                        
+                        // Update uploader if artist was found in metadata, otherwise keep default "local"
+                        if (!metadata.artist.isEmpty()) {
+                            s.uploader = metadata.artist;
+                            LOG_INFO("Updated artist for song: {} = '{}'", s.title.toStdString(), metadata.artist.toStdString());
+                        }
+                        
+                        updateLocker.unlock();
+                        emit songUpdated(s, playlistId);
+                        break;
+                    }
+                }
+            }
+            
+            // After duration probe, launch async cover extraction (non-blocking)
+            std::thread([this, filepathForProbe, playlistId, song]() {
+                try {
+                    util::CoverCache coverCache(m_configManager);
+                    
+                    // Check if cover already cached
+                    if (coverCache.hasCachedCover(filepathForProbe)) {
+                        LOG_DEBUG("Cover already cached for {}", filepathForProbe.toStdString());
+                        auto cachedCover = coverCache.getCachedCover(filepathForProbe);
+                        if (cachedCover) {
+                            QWriteLocker updateLocker(&m_dataLock);
+                            if (m_playlistSongs.contains(playlistId)) {
+                                for (auto& s : m_playlistSongs[playlistId]) {
+                                    if (s.filepath == filepathForProbe && s.title == song.title) {
+                                        // Store cache file name for persistence
+                                        QString coverCacheDir = m_configManager->getCoverCacheDirectory();
+                                        QString fullCacheDir = m_configManager->getAbsolutePath(coverCacheDir);
+                                        QString relativeName = QFileInfo(fullCacheDir).fileName() + "/" + 
+                                                               util::md5Hash(filepathForProbe.toStdString()).c_str();
+                                        s.coverName = QString::fromStdString(util::md5Hash(filepathForProbe.toStdString())) + ".jpg";
+                                        LOG_INFO("Set cached cover name for song: {} = {}", s.title.toStdString(), s.coverName.toStdString());
+                                        updateLocker.unlock();
+                                        emit songUpdated(s, playlistId);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    
+                    // Extract cover using TagLib + FFmpeg fallback
+                    auto coverData = audio::TagLibCoverExtractor::extractCover(filepathForProbe);
+                    if (coverData.empty()) {
+                        LOG_DEBUG("No cover found for {}", filepathForProbe.toStdString());
+                        return;
+                    }
+                    
+                    // Convert to QByteArray for cache
+                    QByteArray coverBytes(reinterpret_cast<const char*>(coverData.data()), coverData.size());
+                    
+                    // Save to cache
+                    auto cachedPath = coverCache.saveCover(filepathForProbe, coverBytes);
+                    if (!cachedPath) {
+                        LOG_WARN("Failed to save cover to cache for {}", filepathForProbe.toStdString());
+                        return;
+                    }
+                    
+                    // Update song with cover name and emit update
+                    QWriteLocker updateLocker(&m_dataLock);
+                    if (m_playlistSongs.contains(playlistId)) {
+                        for (auto& s : m_playlistSongs[playlistId]) {
+                            if (s.filepath == filepathForProbe && s.title == song.title) {
+                                // Store just the filename for persistence
+                                s.coverName = QFileInfo(*cachedPath).fileName();
+                                LOG_INFO("Set cover name for song: {} = {}", s.title.toStdString(), s.coverName.toStdString());
+                                updateLocker.unlock();
+                                emit songUpdated(s, playlistId);
+                                break;
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    LOG_ERROR("Exception during cover extraction: {}", e.what());
+                }
+            }).detach();
+        }).detach();
+    }
+    
+    LOG_INFO("Added song: {} to playlist: {} ({}), platform={}",
              song.title.toStdString(), 
              playlistName.toStdString(), 
-             playlistId.toString().toStdString());
+             playlistId.toString().toStdString(),
+             songWithFilepath.platform);
     return true;
 }
 

@@ -307,7 +307,7 @@ bool WASAPIAudioOutputUnsafe::isPlaying() const {
     return is_playing_;
 }
 
-int WASAPIAudioOutputUnsafe::getAvailableFrames() const {
+int WASAPIAudioOutputUnsafe::getAvailableCacheBytes() const {
     if (!audio_client_ || !initialized_) {
         return 0;
     }

@@ -12,6 +12,7 @@ find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(magic_enum REQUIRED)
+find_package(taglib REQUIRED)
 
 ## Single combined test executable for the project
 add_executable(BilibiliPlayerTest
@@ -28,6 +29,8 @@ add_executable(BilibiliPlayerTest
     playlist_manager_test.cpp
     playlist_test.cpp
     playlist_local_add_test.cpp
+    playlist_local_duration_test.cpp
+    playlist_local_cover_test.cpp
 
     # Theme manager test
     theme_manager_test.cpp
@@ -37,6 +40,12 @@ add_executable(BilibiliPlayerTest
     ffmpeg_decoder_wav_test.cpp
     util/audio_generator.cpp
     i18n_test.cpp
+    
+    # FFmpeg probe metadata test
+    ffmpeg_probe_metadata_test.cpp
+    
+    # Diagnostics tests
+    diagnostics/sine_wave_playback_test.cpp
     
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
@@ -74,6 +83,9 @@ target_link_libraries(config_impl PUBLIC
 # 3. Playlist Manager implementation
 add_library(playlist_manager_impl STATIC
     ${CMAKE_SOURCE_DIR}/src/playlist/playlist_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/audio/ffmpeg_probe.cpp
+    ${CMAKE_SOURCE_DIR}/src/audio/taglib_cover.cpp
+    ${CMAKE_SOURCE_DIR}/src/util/cover_cache.cpp
     ${CMAKE_SOURCE_DIR}/src/log/log_manager.cpp
 	${CMAKE_SOURCE_DIR}/src/util/md5.cpp
 )
@@ -85,6 +97,7 @@ target_link_libraries(playlist_manager_impl PUBLIC
     fmt::fmt
     OpenSSL::SSL
     ffmpeg::ffmpeg
+    taglib::tag
     config_impl
 	magic_enum::magic_enum
 )

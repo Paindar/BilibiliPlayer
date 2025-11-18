@@ -16,7 +16,8 @@ class BilibiliPlayerConan(ConanFile):
         "spdlog/1.16.0",
         "fmt/12.0.0",
         "magic_enum/0.9.7",
-        "catch2/3.11.0"
+        "catch2/3.11.0",
+        "taglib/2.0"
     )
 
     # Default options reflecting conanfile.txt
