@@ -41,6 +41,9 @@ add_executable(BilibiliPlayerTest
     util/audio_generator.cpp
     i18n_test.cpp
     
+    # Diagnostics tests
+    diagnostics/sine_wave_playback_test.cpp
+    
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
 )
