@@ -14,9 +14,9 @@ namespace network
      */
     enum PlatformType {
         Unknown = 0x0,
-        Bilibili = 0x1,
-        YouTube = 0x2,
-        Local = 0x4,
+        Local = 0x1,           // Local files (no network required)
+        Bilibili = 0x2,        // Bilibili streaming platform
+        YouTube = 0x4,         // YouTube streaming platform
         // Future platforms can be added here
         All = 0x7FFFFFFF
     };
