@@ -12,19 +12,56 @@ extern "C" {
 namespace audio
 {
     /**
+     * @brief Audio metadata structure containing duration, artist, and other information
+     */
+    struct AudioMetadata {
+        int64_t durationMs = INT_MAX;      // Duration in milliseconds (INT_MAX if unknown)
+        QString artist;                     // Artist/uploader name (empty if not found)
+        int sampleRate = 0;                // Sample rate in Hz (0 if unknown)
+        int channels = 0;                  // Channel count (0 if unknown)
+        QString title;                     // Track title (empty if not found)
+        QString album;                     // Album name (empty if not found)
+        
+        /**
+         * @brief Check if metadata indicates a valid audio file
+         * @return true if at least duration or sample rate was probed successfully
+         */
+        bool isValid() const {
+            return (durationMs != INT_MAX || sampleRate > 0);
+        }
+    };
+
+    /**
      * @brief FFmpeg audio file probe utility for metadata extraction
      * 
      * Provides lightweight synchronous methods to query audio file metadata
-     * (duration, sample rate, channels) without full decode or resampling.
+     * (duration, sample rate, channels, artist) without full decode or resampling.
      * 
      * Strategy:
      * - For duration: try metadata first → FFmpeg probe → fallback to INT_MAX
+     * - For artist: check common tags (artist, album_artist) with fallback to empty
      * - Avoids redundant probes by checking file metadata before opening format context
-     * - Used primarily by PlaylistManager for local media cover/duration updates
+     * - Used primarily by PlaylistManager for local media metadata updates
      */
     class FFmpegProbe
     {
     public:
+        /**
+         * @brief Synchronously probe comprehensive audio metadata in one pass
+         * 
+         * Efficiently extracts all available metadata by opening the file once:
+         * - Duration (ms)
+         * - Artist/uploader (from metadata tags)
+         * - Sample rate (Hz)
+         * - Channels
+         * - Title
+         * - Album
+         * 
+         * @param path Absolute path to audio file (local file path or file:// URL)
+         * @return AudioMetadata struct with probed information; use isValid() to check validity
+         */
+        static AudioMetadata probeMetadata(const QString& path);
+
         /**
          * @brief Synchronously probe audio file duration with fallback strategy
          * 
@@ -60,6 +97,18 @@ namespace audio
          */
         static int probeChannelCount(const QString& path);
 
+        /**
+         * @brief Synchronously probe artist/uploader from file metadata
+         * 
+         * Attempts to extract artist metadata from common tags:
+         * - TPE1 / Artist / Creator tags
+         * Falls back to album artist if artist not found
+         * 
+         * @param path Absolute path to audio file
+         * @return Artist name if found, empty string if not available
+         */
+        static QString probeArtist(const QString& path);
+
     private:
         /**
          * @brief Internal helper for opening AVFormatContext
@@ -70,3 +119,4 @@ namespace audio
         static AVFormatContext* openFormatContext(const QString& path);
     };
 }
+

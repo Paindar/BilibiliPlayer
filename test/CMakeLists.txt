@@ -41,6 +41,9 @@ add_executable(BilibiliPlayerTest
     util/audio_generator.cpp
     i18n_test.cpp
     
+    # FFmpeg probe metadata test
+    ffmpeg_probe_metadata_test.cpp
+    
     # Diagnostics tests
     diagnostics/sine_wave_playback_test.cpp
     

@@ -29,6 +29,83 @@ namespace audio
         return fmtCtx;
     }
 
+    AudioMetadata FFmpegProbe::probeMetadata(const QString& path)
+    {
+        std::string pathStr = path.toStdString();
+        AudioMetadata metadata;
+
+        AVFormatContext* fmtCtx = openFormatContext(path);
+        if (!fmtCtx) {
+            LOG_DEBUG("FFmpegProbe::probeMetadata: Could not open format context for: {}", pathStr);
+            return metadata;  // Return empty metadata
+        }
+
+        // Probe duration
+        if (fmtCtx->duration != AV_NOPTS_VALUE) {
+            metadata.durationMs = (fmtCtx->duration * 1000) / AV_TIME_BASE;
+        } else {
+            // Try to get duration from first audio stream
+            int audioStreamIndex = av_find_best_stream(fmtCtx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+            if (audioStreamIndex >= 0) {
+                AVStream* stream = fmtCtx->streams[audioStreamIndex];
+                if (stream->duration != AV_NOPTS_VALUE) {
+                    metadata.durationMs = static_cast<int64_t>(stream->duration * av_q2d(stream->time_base) * 1000);
+                } else {
+                    metadata.durationMs = INT_MAX;
+                }
+                // Extract sample rate and channels from audio stream
+                metadata.sampleRate = stream->codecpar->sample_rate;
+                metadata.channels = stream->codecpar->ch_layout.nb_channels;
+            }
+        }
+
+        // Probe metadata tags: artist, title, album
+        if (fmtCtx->metadata) {
+            // Extract artist
+            const char* artistTags[] = {"artist", "Artist", "ARTIST", "TPE1", "TP1", nullptr};
+            for (int i = 0; artistTags[i] != nullptr; ++i) {
+                AVDictionaryEntry* entry = av_dict_get(fmtCtx->metadata, artistTags[i], nullptr, 0);
+                if (entry && entry->value) {
+                    metadata.artist = QString::fromUtf8(entry->value);
+                    break;
+                }
+            }
+
+            // Fallback to album artist if artist not found
+            if (metadata.artist.isEmpty()) {
+                const char* albumArtistTags[] = {"album_artist", "Album Artist", "ALBUM_ARTIST", "TPE2", nullptr};
+                for (int i = 0; albumArtistTags[i] != nullptr; ++i) {
+                    AVDictionaryEntry* entry = av_dict_get(fmtCtx->metadata, albumArtistTags[i], nullptr, 0);
+                    if (entry && entry->value) {
+                        metadata.artist = QString::fromUtf8(entry->value);
+                        break;
+                    }
+                }
+            }
+
+            // Extract title
+            AVDictionaryEntry* titleEntry = av_dict_get(fmtCtx->metadata, "title", nullptr, 0);
+            if (!titleEntry) titleEntry = av_dict_get(fmtCtx->metadata, "Title", nullptr, 0);
+            if (titleEntry && titleEntry->value) {
+                metadata.title = QString::fromUtf8(titleEntry->value);
+            }
+
+            // Extract album
+            AVDictionaryEntry* albumEntry = av_dict_get(fmtCtx->metadata, "album", nullptr, 0);
+            if (!albumEntry) albumEntry = av_dict_get(fmtCtx->metadata, "Album", nullptr, 0);
+            if (albumEntry && albumEntry->value) {
+                metadata.album = QString::fromUtf8(albumEntry->value);
+            }
+        }
+
+        avformat_close_input(&fmtCtx);
+
+        LOG_DEBUG("FFmpegProbe::probeMetadata for {}: duration={} ms, artist='{}', sampleRate={} Hz, channels={}",
+                 pathStr, metadata.durationMs, metadata.artist.toStdString(), metadata.sampleRate, metadata.channels);
+
+        return metadata;
+    }
+
     int64_t FFmpegProbe::probeDuration(const QString& path)
     {
         std::string pathStr = path.toStdString();
@@ -115,4 +192,55 @@ namespace audio
         avformat_close_input(&fmtCtx);
         return channelCount;
     }
+
+    QString FFmpegProbe::probeArtist(const QString& path)
+    {
+        AVFormatContext* fmtCtx = openFormatContext(path);
+        if (!fmtCtx) {
+            return "";
+        }
+
+        QString artist;
+
+        // Try to extract artist from format metadata
+        if (fmtCtx->metadata) {
+            // Try common artist tags in order of preference
+            const char* artistTags[] = {"artist", "Artist", "ARTIST", "TPE1", "TP1", nullptr};
+            
+            for (int i = 0; artistTags[i] != nullptr; ++i) {
+                AVDictionaryEntry* entry = av_dict_get(fmtCtx->metadata, artistTags[i], nullptr, 0);
+                if (entry && entry->value) {
+                    artist = QString::fromUtf8(entry->value);
+                    LOG_DEBUG("FFmpegProbe: Found artist tag '{}' for {}: '{}'", 
+                             artistTags[i], path.toStdString(), artist.toStdString());
+                    break;
+                }
+            }
+
+            // Fallback to album artist if artist not found
+            if (artist.isEmpty()) {
+                const char* albumArtistTags[] = {"album_artist", "Album Artist", "ALBUM_ARTIST", "TPE2", nullptr};
+                
+                for (int i = 0; albumArtistTags[i] != nullptr; ++i) {
+                    AVDictionaryEntry* entry = av_dict_get(fmtCtx->metadata, albumArtistTags[i], nullptr, 0);
+                    if (entry && entry->value) {
+                        artist = QString::fromUtf8(entry->value);
+                        LOG_DEBUG("FFmpegProbe: Found album artist tag '{}' for {}: '{}'", 
+                                 albumArtistTags[i], path.toStdString(), artist.toStdString());
+                        break;
+                    }
+                }
+            }
+        }
+
+        avformat_close_input(&fmtCtx);
+        
+        if (artist.isEmpty()) {
+            LOG_DEBUG("FFmpegProbe: No artist metadata found for: {}", path.toStdString());
+        }
+        
+        return artist;
+    }
+
 }
+

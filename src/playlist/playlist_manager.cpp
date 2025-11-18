@@ -396,8 +396,11 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
             return songWithFilepath.args.isEmpty() ? false : true;
         } else {
             songWithFilepath.filepath = maybeUrl.toLocalFile();
-            // Mark as local media: set uploader and platform
-            songWithFilepath.uploader = "local";
+            // Mark as local media: set platform
+            // Uploader will be extracted from metadata in async probe, default to "local" if not available
+            if (songWithFilepath.uploader.isEmpty()) {
+                songWithFilepath.uploader = "local";
+            }
             songWithFilepath.platform = static_cast<int>(network::PlatformType::Local);
             LOG_DEBUG("Marked song as local: {} (platform={})", song.title.toStdString(), songWithFilepath.platform);
         }
@@ -416,7 +419,7 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
     auto playlistIt = m_playlists.find(playlistId);
     QString playlistName = (playlistIt != m_playlists.end()) ? playlistIt.value().name : "Unknown";
     
-    // If it's a local file, launch async duration probe
+    // If it's a local file, launch async duration and artist probe
     QString filepathForProbe;
     if (static_cast<network::PlatformType>(songWithFilepath.platform) == network::PlatformType::Local) {
         filepathForProbe = songWithFilepath.filepath;
@@ -428,23 +431,33 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
     emit songAdded(song, playlistId);
     emit playlistSongsChanged(playlistId);
     
-    // Async duration probe for local files (non-blocking)
+    // Async metadata probe for local files (non-blocking)
     if (!filepathForProbe.isEmpty()) {
         std::thread([this, filepathForProbe, playlistId, song]() {
-            // Use synchronous probe with fallback strategy:
-            // 1. Try FFmpeg format context → get duration from metadata or stream header
-            // 2. If unavailable, duration remains INT_MAX (UI shows "Unknown")
-            int64_t durationMs = audio::FFmpegProbe::probeDuration(filepathForProbe);
+            // Probe comprehensive metadata in single pass (duration, artist, sample rate, etc.)
+            audio::AudioMetadata metadata = audio::FFmpegProbe::probeMetadata(filepathForProbe);
             
-            LOG_DEBUG("Probed duration for {}: {} ms", filepathForProbe.toStdString(), durationMs);
+            LOG_DEBUG("Probed metadata for {}: duration={} ms, artist='{}', sampleRate={} Hz", 
+                     filepathForProbe.toStdString(), metadata.durationMs, 
+                     metadata.artist.toStdString(), metadata.sampleRate);
             
-            // Update the song with the probed duration
+            // Update the song with probed metadata
             QWriteLocker updateLocker(&m_dataLock);
             if (m_playlistSongs.contains(playlistId)) {
                 for (auto& s : m_playlistSongs[playlistId]) {
                     if (s.filepath == filepathForProbe && s.title == song.title) {
-                        s.duration = static_cast<int>(durationMs/1000); // Convert to seconds
-                        LOG_INFO("Updated duration for song: {} = {} ms", s.title.toStdString(), durationMs);
+                        // Update duration (from milliseconds to seconds)
+                        if (metadata.durationMs != INT_MAX) {
+                            s.duration = static_cast<int>(metadata.durationMs / 1000);
+                            LOG_INFO("Updated duration for song: {} = {} ms", s.title.toStdString(), metadata.durationMs);
+                        }
+                        
+                        // Update uploader if artist was found in metadata, otherwise keep default "local"
+                        if (!metadata.artist.isEmpty()) {
+                            s.uploader = metadata.artist;
+                            LOG_INFO("Updated artist for song: {} = '{}'", s.title.toStdString(), metadata.artist.toStdString());
+                        }
+                        
                         updateLocker.unlock();
                         emit songUpdated(s, playlistId);
                         break;
