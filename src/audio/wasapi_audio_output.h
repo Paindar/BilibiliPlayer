@@ -27,7 +27,7 @@ public:
     bool pause();
     bool stop();
     bool isPlaying() const;
-    int getAvailableFrames() const;  // Get number of frames available in buffer
+    int getAvailableCacheBytes() const;  // Get number of frames available in buffer
     int getCurrentFrames() const;
     // Get current playback position in milliseconds according to the audio device clock
     int64_t getCurrentPositionMs() const;

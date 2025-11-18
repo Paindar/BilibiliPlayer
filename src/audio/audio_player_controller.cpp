@@ -642,8 +642,8 @@ void AudioPlayerController::frameTransmissionLoop()
                 }
 
                 // Check if buffer has enough space for this frame
-                int availableFrames = m_audioOutput->getAvailableFrames();
-                if (availableFrames >= samplesInFrame) {
+                int availableBytes = m_audioOutput->getAvailableCacheBytes();
+                if (availableBytes >= static_cast<int>(frame->data.size())) {
                     // Buffer has space, send the frame
                     std::unique_lock<std::mutex> comMutex(m_componentMutex);
                     m_audioOutput->playAudioData(frame->data.data(), static_cast<int>(frame->data.size()));
@@ -653,9 +653,9 @@ void AudioPlayerController::frameTransmissionLoop()
                 } else {
                     // Buffer is full, wait for consumption
                     // Wait time based on how long it takes to consume remaining buffer
-                    double bufferDurationMs = (static_cast<double>(availableFrames) / frame->sample_rate) * 1000.0 * 0.5; // Wait for half buffer to clear
-                    int waitMs = std::max(1, std::min(10, static_cast<int>(bufferDurationMs))); // Clamp between 1-10ms
-                    LOG_DEBUG(" Audio output buffer full (available frames: {}), waiting {} ms before retrying", availableFrames, waitMs);
+                    double frameDuratimeSec = static_cast<double>(samplesInFrame) / frame->sample_rate;
+                    int waitMs = static_cast<int>(frameDuratimeSec*500);
+                    // LOG_DEBUG(" Audio output buffer full (available frames: {}), waiting {} ms before retrying", availableBytes, waitMs);
                     std::this_thread::sleep_for(std::chrono::milliseconds(waitMs));
                     retryCount++;
                 }
