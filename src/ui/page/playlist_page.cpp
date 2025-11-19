@@ -1,6 +1,7 @@
 #include "playlist_page.h"
 #include "ui_playlist_page.h"
 #include <playlist/playlist_manager.h>
+#include <network/platform/i_platform.h>
 #include <log/log_manager.h>
 #include <config/config_manager.h>
 #include <ui/util/elided_label.h>
@@ -303,13 +304,8 @@ QTreeWidgetItem* PlaylistPage::createSongItem(const playlist::SongInfo& song)
     // item->setText(0, song.title);
     item->setText(1, song.uploader);
     
-    // Convert platform enum to string - you may need to implement this conversion
-    QString platformStr;
-    switch (song.platform) {
-        case 1: platformStr = "Bilibili"; break;
-        // Add other platforms as needed
-        default: platformStr = "Unknown"; break;
-    }
+    // Convert platform enum to string using i18n-enabled function
+    QString platformStr = network::getPlatformName(static_cast<network::PlatformType>(song.platform));
     item->setText(2, platformStr);
     item->setText(3, formatDuration(song.duration/1000)); // Convert ms to seconds
     

@@ -6,6 +6,7 @@
 #include <functional>
 #include <cstdint>
 #include <QString>
+#include <QCoreApplication>
 
 namespace network
 {
@@ -24,19 +25,25 @@ namespace network
     /**
      * @brief Convert PlatformType enum to display string (for UI and serialization)
      * 
-     * Returns QString for UI use, or can be converted to std::string via toStdString()
-     * Phase 3c (US3): Will wrap return values with tr() for localization
+     * Returns QString wrapped with tr() for localization and UI use.
+     * Translatable strings: "Bilibili", "YouTube", "Local", "Unknown"
+     * 
+     * IMPORTANT: This function is designed for UI display ONLY.
+     * - Do NOT use for data comparison or serialization (use enum values instead)
+     * - Do NOT use in file paths or configuration keys (use numeric platform value)
+     * - Safe for use in: UI labels, status messages, user-facing text
+     * - Use getPlatformTypeFromName() for reverse lookup if needed
      */
     inline QString getPlatformName(PlatformType type) {
         switch (type) {
             case Bilibili:
-                return "Bilibili";
+                return QCoreApplication::translate("PlatformNames", "Bilibili");
             case YouTube:
-                return "YouTube";
+                return QCoreApplication::translate("PlatformNames", "YouTube");
             case Local:
-                return "Local";
+                return QCoreApplication::translate("PlatformNames", "Local");
             default:
-                return "Unknown";
+                return QCoreApplication::translate("PlatformNames", "Unknown");
         }
     }
 

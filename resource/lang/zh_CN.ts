@@ -169,12 +169,12 @@
         <translation>加载中...</translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/playlist_page.cpp" line="496"/>
+        <location filename="../../src/ui/page/playlist_page.cpp" line="491"/>
         <source>Select Local Media</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/playlist_page.cpp" line="498"/>
+        <location filename="../../src/ui/page/playlist_page.cpp" line="493"/>
         <source>Audio Files (*.mp3 *.wav *.flac);;All Files (*)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -219,7 +219,7 @@
     <message>
         <location filename="../../src/ui/page/playlist_page.ui" line="167"/>
         <source>0 songs</source>
-        <translation type="unfinished"></translation>
+        <translation type="unfinished">0首歌曲</translation>
     </message>
     <message>
         <location filename="../../src/ui/page/playlist_page.ui" line="179"/>
@@ -255,6 +255,29 @@
         <location filename="../../src/ui/page/playlist_page.ui" line="252"/>
         <source>Duration</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>QObject</name>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="33"/>
+        <source>Bilibili</source>
+        <translation>B站</translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="35"/>
+        <source>YouTube</source>
+        <translation>YouTube</translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="37"/>
+        <source>Local</source>
+        <translation>本地</translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="39"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
     </message>
 </context>
 <context>
@@ -315,7 +338,6 @@
     <message>
         <location filename="../../src/ui/page/search_page.cpp" line="114"/>
         <location filename="../../src/ui/page/search_page.cpp" line="177"/>
-        <location filename="../../src/ui/page/search_page.cpp" line="218"/>
         <source>Bilibili</source>
         <translation type="unfinished">B站</translation>
     </message>
@@ -325,17 +347,16 @@
         <translation>搜索范围: %1</translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="220"/>
         <source>Unknown</source>
-        <translation type="unfinished">未知</translation>
+        <translation type="obsolete">未知</translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="251"/>
+        <location filename="../../src/ui/page/search_page.cpp" line="247"/>
         <source>Search failed: %1</source>
         <translation>搜索失败: %1</translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="252"/>
+        <location filename="../../src/ui/page/search_page.cpp" line="248"/>
         <source>Please check your network connection or try again later</source>
         <translation>请检查网络连接或稍后重试</translation>
     </message>

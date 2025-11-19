@@ -213,12 +213,8 @@ void SearchPage::setupScopeMenu()
 
 QString SearchPage::convertPlatformEnumToString(network::PlatformType platform) const
 {
-    switch (platform) {
-    case network::PlatformType::Bilibili:
-        return tr("Bilibili");
-    default:
-        return tr("Unknown");
-    }
+    // Use the localized platform name from i_platform.h
+    return network::getPlatformName(platform);
 }
 
 void SearchPage::onSearchCompleted(const QString& keyword)

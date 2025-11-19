@@ -169,12 +169,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/playlist_page.cpp" line="496"/>
+        <location filename="../../src/ui/page/playlist_page.cpp" line="491"/>
         <source>Select Local Media</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/playlist_page.cpp" line="498"/>
+        <location filename="../../src/ui/page/playlist_page.cpp" line="493"/>
         <source>Audio Files (*.mp3 *.wav *.flac);;All Files (*)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -258,6 +258,29 @@
     </message>
 </context>
 <context>
+    <name>QObject</name>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="33"/>
+        <source>Bilibili</source>
+        <translation type="unfinished">Bilibili</translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="35"/>
+        <source>YouTube</source>
+        <translation type="unfinished">YouTube</translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="37"/>
+        <source>Local</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../src/network/platform/i_platform.h" line="39"/>
+        <source>Unknown</source>
+        <translation type="unfinished">Unknown</translation>
+    </message>
+</context>
+<context>
     <name>SearchPage</name>
     <message>
         <location filename="../../src/ui/page/search_page.ui" line="6"/>
@@ -315,7 +338,6 @@
     <message>
         <location filename="../../src/ui/page/search_page.cpp" line="114"/>
         <location filename="../../src/ui/page/search_page.cpp" line="177"/>
-        <location filename="../../src/ui/page/search_page.cpp" line="218"/>
         <source>Bilibili</source>
         <translation type="unfinished">Bilibili</translation>
     </message>
@@ -325,17 +347,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="220"/>
         <source>Unknown</source>
-        <translation type="unfinished">Unknown</translation>
+        <translation type="obsolete">Unknown</translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="251"/>
+        <location filename="../../src/ui/page/search_page.cpp" line="247"/>
         <source>Search failed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../src/ui/page/search_page.cpp" line="252"/>
+        <location filename="../../src/ui/page/search_page.cpp" line="248"/>
         <source>Please check your network connection or try again later</source>
         <translation type="unfinished"></translation>
     </message>
