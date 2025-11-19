@@ -56,6 +56,7 @@ private slots:
 private:
     void performSearch();
     void showEmptyState();
+    void showSearchingState();
     void showResults();
     void setupScopeMenu();
     QString convertPlatformEnumToString(network::PlatformType platform) const;

@@ -129,10 +129,9 @@ void SearchPage::performSearch()
     // Emit search signal for any listeners
     emit searchRequested(keyword, m_currentScope);
     
-    // Show loading state
-    showResults();
+    // Show searching state
+    showSearchingState();
     ui->resultsList->clear();
-    // ui->resultsList->addItem(QString("正在搜索: \"%1\"...").arg(keyword));
     
     // Disable search button to prevent multiple requests
     ui->searchButton->setEnabled(false);
@@ -153,9 +152,14 @@ void SearchPage::showEmptyState()
     ui->contentStack->setCurrentIndex(0); // Empty page
 }
 
+void SearchPage::showSearchingState()
+{
+    ui->contentStack->setCurrentIndex(1); // Searching page
+}
+
 void SearchPage::showResults()
 {
-    ui->contentStack->setCurrentIndex(1); // Results page
+    ui->contentStack->setCurrentIndex(2); // Results page
 }
 
 void SearchPage::setupScopeMenu()
@@ -256,7 +260,7 @@ void SearchPage::onSearchProgress(const QString& keyword, const QList<network::S
     }
     
     // Show results page
-    ui->contentStack->setCurrentWidget(ui->resultsPage);
+    showResults();
     
     for (const auto& result : results) {
         // Create a simple list item with the result title
