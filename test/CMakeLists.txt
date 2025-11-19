@@ -47,6 +47,9 @@ add_executable(BilibiliPlayerTest
     # Diagnostics tests
     diagnostics/sine_wave_playback_test.cpp
     
+    # Async Search test (Phase 3b)
+    search_async_test.cpp
+    
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
 )

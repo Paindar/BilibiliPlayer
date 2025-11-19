@@ -31,6 +31,16 @@ public:
     ~SearchPage();
 
     void setSearchText(const QString& searchText);
+    
+    /**
+     * @brief Cancel any pending search operations
+     * 
+     * Called when:
+     * - User navigates away from SearchPage
+     * - Destructor cleans up (Phase 3b: non-blocking search)
+     * - New search is initiated (cancels previous search)
+     */
+    void cancelPendingSearch();
 
     // INavigablePage interface
     QString getNavigationState() const override;

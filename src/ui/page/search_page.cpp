@@ -52,6 +52,9 @@ SearchPage::SearchPage(QWidget *parent)
 
 SearchPage::~SearchPage()
 {
+    // Phase 3b: Cancel any pending search operations when leaving SearchPage
+    // This ensures rapid navigation doesn't leave background threads running
+    cancelPendingSearch();
     delete ui;
 }
 
@@ -125,6 +128,10 @@ void SearchPage::performSearch()
         showEmptyState();
         return;
     }
+    
+    // Phase 3b: Cancel any previous search before starting new one
+    // This prevents stale results from old search being displayed
+    cancelPendingSearch();
     
     // Emit search signal for any listeners
     emit searchRequested(keyword, m_currentScope);
@@ -318,5 +325,18 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
         if (!AUDIO_PLAYER_CONTROLLER->isPlaying()) {
             AUDIO_PLAYER_CONTROLLER->playPlaylistFromSong(currentPlaylistUuid, song);
         }
+    }
+}
+
+void SearchPage::cancelPendingSearch()
+{
+    // Phase 3b: Cancel any pending search operations
+    // Called when:
+    // - User navigates away from SearchPage (destructor)
+    // - New search is initiated (to prevent stale results)
+    // - SearchPage is hidden/replaced
+    if (NETWORK_MANAGER) {
+        LOG_INFO("Cancelling pending search operations");
+        NETWORK_MANAGER->cancelAllSearches();
     }
 }
