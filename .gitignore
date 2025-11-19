@@ -81,6 +81,5 @@ CMakeLists.txt.user*
 # Build and generated files
 build/
 demo/
-specs/
 # CMake user-specific files
 CMakeUserPresets.json
