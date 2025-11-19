@@ -49,16 +49,15 @@ namespace network
      * @brief Search result structure
      */
     struct SearchResult {
-        QString title;
-        QString uploader;
-        PlatformType platform;
-        int duration;
-        QString coverUrl;       // Network URL for cover image
-        QString coverImg;       // Filename for cover (not including tmp/cover/ path)
-        QString description;
-
-        // Reserved for raw interface data storage
-        QString interfaceData;
+        QString title;          // Audio title
+        QString uploader;       // Audio uploader/author
+        PlatformType platform;  // Platform type
+        int duration;           // Duration in seconds
+        QString coverUrl;       // Network URL for cover image. If it's a local file, it will be empty and use coverImg instead.
+        QString coverImg;       // Filename for cover in local storage(not including tmp/cover/ path)
+        QString description;    // Audio description, only assigned when it's from network.
+        
+        QString interfaceData;  // Reserved for raw interface data storage
     };
     /**
      * @brief Abstract base interface for platform-specific network operations

@@ -14,13 +14,13 @@ namespace playlist
     };
 
     struct SongInfo {
-        QString title;
-        QString uploader; // Artist or uploader name
-        int platform; // Boxing for network::SupportInterface enum, may support more interface types later
-        int duration;
-        QString filepath;
-        QString coverName;
-        QString args; // Additional arguments or metadata for interface
+        QString title;      // Song title
+        QString uploader;   // Artist or uploader name
+        int platform;       // Boxing for network::SupportInterface enum, may support more interface types in the future
+        int duration;       // Duration in seconds, may be 0 or INT_MAX if unknown
+        QString filepath;   // Local file path, empty if it hasn't been downloaded
+        QString coverName;  // Local cover image filename (not including tmp/cover/ path), empty if not available
+        QString args;       // Additional arguments or metadata for interface
         bool operator==(const SongInfo& other) const {
             return title == other.title &&
                    uploader == other.uploader &&
@@ -29,10 +29,10 @@ namespace playlist
     };
 
     struct PlaylistInfo {
-        QString name;
-        QString creator;
-        QString description;
-        QString coverUri;
+        QString name;       // Playlist name
+        QString creator;    // Creator or author of the playlist
+        QString description; // Playlist description
+        QString coverUri;   // URI for playlist cover image
         QUuid uuid; // Unique identifier for the playlist
         bool operator==(const PlaylistInfo& other) const {
             return uuid == other.uuid;
