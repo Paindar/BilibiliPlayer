@@ -111,8 +111,8 @@ void SearchPage::onScopeSelectionChanged()
         m_currentScope = static_cast<SearchScope>(action->data().toInt());
         
         // Update button tooltip
-        QString scopeName = (m_currentScope == SearchScope::All) ? "全部" : "Bilibili";
-        ui->scopeButton->setToolTip(QString("搜索范围: %1").arg(scopeName));
+        QString scopeName = (m_currentScope == SearchScope::All) ? tr("All") : tr("Bilibili");
+        ui->scopeButton->setToolTip(QString(tr("Search scope: %1")).arg(scopeName));
     }
 }
 
@@ -168,13 +168,13 @@ void SearchPage::setupScopeMenu()
     m_scopeActionGroup = new QActionGroup(this);
     
     // Create "All" option
-    QAction* allAction = new QAction("全部", this);
+    QAction* allAction = new QAction(tr("All"), this);
     allAction->setCheckable(true);
     allAction->setChecked(true);
     allAction->setData(static_cast<int>(SearchScope::All));
     
     // Create "Bilibili" option
-    QAction* bilibiliAction = new QAction("Bilibili", this);
+    QAction* bilibiliAction = new QAction(tr("Bilibili"), this);
     bilibiliAction->setCheckable(true);
     bilibiliAction->setData(static_cast<int>(SearchScope::Bilibili));
     
@@ -215,9 +215,9 @@ QString SearchPage::convertPlatformEnumToString(network::PlatformType platform) 
 {
     switch (platform) {
     case network::PlatformType::Bilibili:
-        return "Bilibili";
+        return tr("Bilibili");
     default:
-        return "未知";
+        return tr("Unknown");
     }
 }
 
@@ -248,8 +248,8 @@ void SearchPage::onSearchFailed(const QString& keyword, const QString& errorMess
     // Show error message
     showResults();
     ui->resultsList->clear();
-    ui->resultsList->addItem(QString("搜索失败: %1").arg(errorMessage));
-    ui->resultsList->addItem("请检查网络连接或稍后重试");
+    ui->resultsList->addItem(QString(tr("Search failed: %1")).arg(errorMessage));
+    ui->resultsList->addItem(tr("Please check your network connection or try again later"));
 }
 
 void SearchPage::onSearchProgress(const QString& keyword, const QList<network::SearchResult>& results)

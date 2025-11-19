@@ -137,7 +137,7 @@ QLabel#emptyResultLabel {
         </size>
        </property>
        <property name="placeholderText">
-        <string>请输入搜索关键词...</string>
+        <string>Enter search keyword...</string>
        </property>
       </widget>
      </item>
@@ -159,7 +159,7 @@ QLabel#emptyResultLabel {
         <string>⚙</string>
        </property>
        <property name="toolTip">
-        <string>搜索范围设置</string>
+        <string>Search scope settings</string>
        </property>
       </widget>
      </item>
@@ -172,7 +172,7 @@ QLabel#emptyResultLabel {
         </size>
        </property>
        <property name="text">
-        <string>搜索</string>
+        <string>Search</string>
        </property>
       </widget>
      </item>
@@ -236,7 +236,7 @@ QLabel#emptyResultLabel {
        <item>
         <widget class="QLabel" name="emptyResultLabel">
          <property name="text">
-          <string>请输入关键词开始搜索</string>
+          <string>Enter a keyword to start searching</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
@@ -286,7 +286,7 @@ QLabel#emptyResultLabel {
        <item>
         <widget class="QLabel" name="searchingLabel">
          <property name="text">
-          <string>正在搜索中...</string>
+          <string>Searching...</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>

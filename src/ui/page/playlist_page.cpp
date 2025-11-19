@@ -69,11 +69,11 @@ void PlaylistPage::setupUI()
             this, &PlaylistPage::saveColumnWidths);
     
     // Set default UI state
-    ui->playlistNameLabel->setText("No Playlist Selected");
+    ui->playlistNameLabel->setText(tr("No Playlist Selected"));
     ui->creatorLabel->setText("");
-    ui->songCountLabel->setText("0 songs");
+    ui->songCountLabel->setText(tr("0 songs"));
     ui->descriptionLabel->setText("");
-    ui->coverLabel->setText("No Cover");
+    ui->coverLabel->setText(tr("No Cover"));
 
     // Connect Add Local Files button (added to .ui)
     if (ui->addLocalFilesButton) {
@@ -140,11 +140,11 @@ void PlaylistPage::refreshPlaylist()
     if (!m_playlistManager) {
         LOG_DEBUG("No playlist manager available");
         // Clear UI when no playlist manager is available
-        ui->playlistNameLabel->setText("No Playlist Manager");
+        ui->playlistNameLabel->setText(tr("No Playlist Manager"));
         ui->creatorLabel->setText("");
-        ui->songCountLabel->setText("0 songs");
+        ui->songCountLabel->setText(tr("0 songs"));
         ui->descriptionLabel->setText("");
-        ui->coverLabel->setText("No Cover");
+        ui->coverLabel->setText(tr("No Cover"));
         ui->songListView->clear();
         return;
     }
@@ -152,11 +152,11 @@ void PlaylistPage::refreshPlaylist()
     if (m_currentPlaylistId.isNull()) {
         LOG_DEBUG("No current playlist selected");
         // Clear UI when no playlist is selected
-        ui->playlistNameLabel->setText("No Playlist Selected");
+        ui->playlistNameLabel->setText(tr("No Playlist Selected"));
         ui->creatorLabel->setText("");
-        ui->songCountLabel->setText("0 songs");
+        ui->songCountLabel->setText(tr("0 songs"));
         ui->descriptionLabel->setText("");
-        ui->coverLabel->setText("No Cover");
+        ui->coverLabel->setText(tr("No Cover"));
         ui->songListView->clear();
         return;
     }
@@ -245,8 +245,8 @@ void PlaylistPage::updatePlaylistInfo()
     
     // Update playlist name and info
     ui->playlistNameLabel->setText(playlistInfo->name);
-    ui->creatorLabel->setText(QString("Created by: %1").arg(playlistInfo->creator));
-    ui->songCountLabel->setText(QString("%1 songs").arg(songs.size()));
+    ui->creatorLabel->setText(QString(tr("Created by: %1")).arg(playlistInfo->creator));
+    ui->songCountLabel->setText(QString(tr("%1 songs")).arg(songs.size()));
     ui->descriptionLabel->setText(playlistInfo->description);
     
     // Set cover image (placeholder for now)
@@ -258,12 +258,12 @@ void PlaylistPage::updatePlaylistInfo()
             if (!pix.isNull()) 
                 ui->coverLabel->setPixmap(pix.scaled(150,150, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         } else {
-            ui->coverLabel->setText("Loading...");
+            ui->coverLabel->setText(tr("Loading..."));
             m_currentCoverPath = playlistInfo->coverUri;
             LOG_DEBUG("Requesting cover image download from {}", playlistInfo->coverUri.toStdString());
         }
     } else {
-        ui->coverLabel->setText("No Cover");
+        ui->coverLabel->setText(tr("No Cover"));
     }
 }
 
