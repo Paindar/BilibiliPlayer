@@ -50,6 +50,9 @@ add_executable(BilibiliPlayerTest
     # Async Search test (Phase 3b)
     search_async_test.cpp
     
+    # Playlist Navigation test (Phase 3d)
+    playlist_navigation_test.cpp
+    
     # Bilibili Network Interface test (requires network implementation)
     bili_network_interface_test.cpp
 )

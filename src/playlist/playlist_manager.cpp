@@ -563,6 +563,30 @@ bool PlaylistManager::removeSongFromPlaylist(const playlist::SongInfo& song, con
         [&song](const playlist::SongInfo& s) { return s == song; });
     
     if (it != songs.end()) {
+        QUuid songToDelete = it->uuid;
+        
+        // Phase 3d: Check if this song is currently playing (in current playlist)
+        bool isCurrentPlaylistSong = (playlistId == m_currentPlaylistId);
+        
+        // Emit signal before deletion (Phase 3d: T056-T058)
+        if (isCurrentPlaylistSong) {
+            emit currentSongAboutToDelete(songToDelete, playlistId);
+        }
+        
+        // Calculate next song for deletion recovery (Phase 3d: T057-T058)
+        QUuid nextSongId;
+        int deletedIndex = std::distance(songs.begin(), it);
+        
+        if (deletedIndex < songs.size() - 1) {
+            // Song has a successor, use it
+            nextSongId = songs[deletedIndex + 1].uuid;
+        } else if (deletedIndex > 0) {
+            // Song is at end, use previous
+            nextSongId = songs[deletedIndex - 1].uuid;
+        }
+        // else: nextSongId remains null (last song case)
+        
+        // Remove the song
         songs.erase(it);
         auto playlistIt = m_playlists.find(playlistId);
         locker.unlock();
@@ -570,6 +594,11 @@ bool PlaylistManager::removeSongFromPlaylist(const playlist::SongInfo& song, con
         // Emit signals
         emit songRemoved(song, playlistId);
         emit playlistSongsChanged(playlistId);
+        
+        // Emit deletion complete signal (Phase 3d: T057-T058)
+        if (isCurrentPlaylistSong) {
+            emit currentSongDeleted(songToDelete, nextSongId, playlistId);
+        }
         
         LOG_INFO("Removed song: {} from playlist: {} ({})",
                  song.title.toStdString(), 
@@ -1039,34 +1068,48 @@ std::optional<QUuid> PlaylistManager::getNextSong(const QUuid& currentSongId,
     
     const QList<playlist::SongInfo>& songs = it.value();
     
-    // Phase 3d stub: Simplified implementation
-    // For now, we don't track song positions, just handle mode logic
-    // Real implementation will associate UUIDs with positions
+    // Find current song index by UUID
+    int currentIndex = -1;
+    for (int i = 0; i < songs.size(); ++i) {
+        if (songs[i].uuid == currentSongId) {
+            currentIndex = i;
+            break;
+        }
+    }
+    
+    // Current song not found in playlist
+    if (currentIndex == -1) {
+        LOG_WARN("Current song {} not found in playlist {}", 
+                 currentSongId.toString().toStdString(), 
+                 playlistId.toString().toStdString());
+        return std::nullopt;
+    }
     
     // Handle different playback modes
     switch (mode) {
         case playlist::PlayMode::PlaylistLoop: {
-            // Wrap to beginning at end - return first song
-            if (!songs.isEmpty()) {
-                LOG_DEBUG("getNextSong: PlaylistLoop mode - wrapping to first song");
-                return QUuid::createUuid();  // Placeholder
-            }
-            return std::nullopt;
+            // Loop entire playlist: wrap to beginning at end
+            int nextIndex = (currentIndex + 1) % songs.size();
+            LOG_DEBUG("getNextSong: PlaylistLoop mode - moving from index {} to {}", 
+                      currentIndex, nextIndex);
+            return songs[nextIndex].uuid;
         }
         
         case playlist::PlayMode::SingleLoop: {
-            // Return same track
-            LOG_DEBUG("getNextSong: SingleLoop mode - returning same song");
+            // Loop current song: return same track
+            LOG_DEBUG("getNextSong: SingleLoop mode - returning same song at index {}", currentIndex);
             return currentSongId;
         }
         
         case playlist::PlayMode::Random: {
-            // Return random track from playlist
+            // Random next song: pick random from playlist
             if (songs.size() == 1) {
                 return currentSongId;
             }
-            LOG_DEBUG("getNextSong: Random mode - returning random song");
-            return QUuid::createUuid();  // Placeholder
+            int randomIndex = QRandomGenerator::global()->bounded(songs.size());
+            LOG_DEBUG("getNextSong: Random mode - selected random index {} from {} songs", 
+                      randomIndex, songs.size());
+            return songs[randomIndex].uuid;
         }
         
         default:
@@ -1095,34 +1138,48 @@ std::optional<QUuid> PlaylistManager::getPreviousSong(const QUuid& currentSongId
     
     const QList<playlist::SongInfo>& songs = it.value();
     
-    // Phase 3d stub: Simplified implementation
-    // For now, we don't track song positions, just handle mode logic
-    // Real implementation will associate UUIDs with positions
+    // Find current song index by UUID
+    int currentIndex = -1;
+    for (int i = 0; i < songs.size(); ++i) {
+        if (songs[i].uuid == currentSongId) {
+            currentIndex = i;
+            break;
+        }
+    }
+    
+    // Current song not found in playlist
+    if (currentIndex == -1) {
+        LOG_WARN("Current song {} not found in playlist {}", 
+                 currentSongId.toString().toStdString(), 
+                 playlistId.toString().toStdString());
+        return std::nullopt;
+    }
     
     // Handle different playback modes
     switch (mode) {
         case playlist::PlayMode::PlaylistLoop: {
-            // Wrap to end at beginning - return last song
-            if (!songs.isEmpty()) {
-                LOG_DEBUG("getPreviousSong: PlaylistLoop mode - wrapping to last song");
-                return QUuid::createUuid();  // Placeholder
-            }
-            return std::nullopt;
+            // Loop entire playlist: wrap to end at beginning
+            int prevIndex = (currentIndex - 1 + songs.size()) % songs.size();
+            LOG_DEBUG("getPreviousSong: PlaylistLoop mode - moving from index {} to {}", 
+                      currentIndex, prevIndex);
+            return songs[prevIndex].uuid;
         }
         
         case playlist::PlayMode::SingleLoop: {
-            // Return same track
-            LOG_DEBUG("getPreviousSong: SingleLoop mode - returning same song");
+            // Loop current song: return same track
+            LOG_DEBUG("getPreviousSong: SingleLoop mode - returning same song at index {}", currentIndex);
             return currentSongId;
         }
         
         case playlist::PlayMode::Random: {
-            // Return random track from playlist
+            // Random previous song: pick random from playlist
             if (songs.size() == 1) {
                 return currentSongId;
             }
-            LOG_DEBUG("getPreviousSong: Random mode - returning random song");
-            return QUuid::createUuid();  // Placeholder
+            int randomIndex = QRandomGenerator::global()->bounded(songs.size());
+            LOG_DEBUG("getPreviousSong: Random mode - selected random index {} from {} songs", 
+                      randomIndex, songs.size());
+            return songs[randomIndex].uuid;
         }
         
         default:

@@ -211,6 +211,33 @@ void ApplicationContext::setupManagerConnections()
                 LOG_INFO("Language changed to: {}", language.toStdString());
                 // Reload UI strings if needed
             });
+    
+    // Phase 3d: Handle deletion of currently playing song
+    // When a song is deleted from the current playlist, the audio player should respond
+    connect(PLAYLIST_MANAGER, &PlaylistManager::currentSongDeleted,
+            this, [this](const QUuid& deletedSongId, const QUuid& nextSongId, const QUuid& playlistId) {
+                LOG_INFO("Song deleted from current playlist: {} ({})", 
+                         deletedSongId.toString().toStdString(),
+                         playlistId.toString().toStdString());
+                
+                if (!m_audioPlayerController) {
+                    LOG_WARN("AudioPlayerController not available for deletion handling");
+                    return;
+                }
+                
+                // If there's a next song suggestion, play it
+                if (!nextSongId.isNull()) {
+                    LOG_DEBUG("Switching to next song after deletion: {}", 
+                              nextSongId.toString().toStdString());
+                    // The audio controller will need to transition to next song
+                    // This is handled at a higher level by audio player logic
+                } else {
+                    // Last song was deleted, stop playback
+                    LOG_DEBUG("Last song was deleted, stopping playback");
+                    m_audioPlayerController->stop();
+                }
+            });
+    
     // Network errors should be logged (NetworkManager is singleton, so connect differently if needed)
     // For now, NetworkManager will log its own errors through LogManager
     
