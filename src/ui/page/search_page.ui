@@ -258,6 +258,56 @@ QLabel#emptyResultLabel {
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="searchingPage">
+      <layout class="QVBoxLayout" name="searchingLayout">
+       <item>
+        <spacer name="searchingTopSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>60</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="searchingProgress">
+         <property name="value">
+          <number>0</number>
+         </property>
+         <property name="textVisible">
+          <bool>false</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="searchingLabel">
+         <property name="text">
+          <string>正在搜索中...</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="searchingBottomSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>60</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="resultsPage">
       <layout class="QVBoxLayout" name="resultsLayout">
        <property name="leftMargin">

@@ -14,28 +14,6 @@ class Ui_SearchPage;
 class QListWidgetItem;
 QT_END_NAMESPACE
 
-// Custom widget for search result item display
-class SearchResultItemWidget : public QWidget
-{
-    Q_OBJECT
-    
-public:
-    explicit SearchResultItemWidget(const network::SearchResult& result, QWidget* parent = nullptr);
-    ~SearchResultItemWidget() = default;
-    
-    void setCoverImage(const QPixmap& pixmap);
-    void updateResult(const network::SearchResult& result);
-    
-private:
-    QLabel* m_coverLabel;
-    ScrollingLabel* m_titleLabel;
-    ScrollingLabel* m_uploaderLabel;
-    QLabel* m_platformLabel;
-    QLabel* m_descriptionLabel;
-    network::SearchResult m_result;
-};
-
-
 class SearchPage : public QWidget, public INavigablePage
 {
     Q_OBJECT
