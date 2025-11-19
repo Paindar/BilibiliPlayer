@@ -88,15 +88,23 @@ The project uses a hybrid build approach:
    .\build\<build_type>\src\BilibiliPlayer.exe  # Windows
    ```
 
-## � Features
+## 🎯 Features
 
 - **Modern UI**: Clean, responsive interface built with Qt6
-- **Playlist Management**: Hierarchical category and playlist organization
+- **Playlist Management**: Hierarchical category and playlist organization with UUID-based navigation
 - **Multi-format Support**: Various audio and video format compatibility via FFmpeg
 - **Configuration System**: Flexible, workspace-based configuration management
 - **Logging**: Comprehensive logging system for debugging and monitoring
 - **Network Streaming**: Support for online media streaming with HTTPS support
 - **Cross-platform**: Runs on Windows, with Linux and macOS support planned
+
+### Phase 3: UI Localization & Navigation (Latest)
+- **Multi-language Support**: Full i18n with English/Chinese translations via Qt translation system
+- **Non-blocking Search**: Async search operations with real-time cancellation; UI remains responsive
+- **Platform Names Localization**: Bilibili (B站), YouTube, Local (本地), Unknown (未知) with proper i18n
+- **Smart Navigation**: Next/Previous song with multiple playback modes (PlaylistLoop, SingleLoop, Random)
+- **Graceful Deletion**: Safe song deletion with automatic playback recovery and UI updates
+- **See [PHASE_3_IMPLEMENTATION.md](docs/PHASE_3_IMPLEMENTATION.md) for comprehensive technical details**
 
 ## 🧪 Development Insights
 

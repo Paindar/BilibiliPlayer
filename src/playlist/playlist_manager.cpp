@@ -1071,7 +1071,8 @@ std::optional<QUuid> PlaylistManager::getNextSong(const QUuid& currentSongId,
     // Find current song index by UUID
     int currentIndex = -1;
     for (int i = 0; i < songs.size(); ++i) {
-        if (songs[i].uuid == currentSongId) {
+        const auto& song = songs[i];
+        if (song.uuid == currentSongId) {
             currentIndex = i;
             break;
         }
@@ -1141,7 +1142,8 @@ std::optional<QUuid> PlaylistManager::getPreviousSong(const QUuid& currentSongId
     // Find current song index by UUID
     int currentIndex = -1;
     for (int i = 0; i < songs.size(); ++i) {
-        if (songs[i].uuid == currentSongId) {
+        const auto& song = songs[i];
+        if (song.uuid == currentSongId) {
             currentIndex = i;
             break;
         }

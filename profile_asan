@@ -1,0 +1,13 @@
+[settings]
+os=Windows
+arch=x86_64
+compiler=gcc
+compiler.version=13
+compiler.libcxx=libstdc++11
+build_type=Debug
+
+[conf]
+tools.cmake.cmaketoolchain:generator=Ninja
+tools.build:cxxflags=["-fsanitize=address", "-fno-omit-frame-pointer", "-g"]
+tools.build:sharedlinkflags=["-fsanitize=address"]
+tools.build:exelinkflags=["-fsanitize=address"]

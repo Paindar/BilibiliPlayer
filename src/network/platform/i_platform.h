@@ -47,7 +47,7 @@ namespace network
         }
     }
 
-    const static PlatformType getPlatformTypeFromName(const std::string& name) {
+    static PlatformType getPlatformTypeFromName(const std::string& name) {
         if (name == "Bilibili") {
             return Bilibili;
         } else if (name == "YouTube") {
