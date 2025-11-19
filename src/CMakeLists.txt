@@ -99,6 +99,9 @@ set(PROJECT_SOURCES
     util/urlencode.cpp
     util/cover_cache.cpp
     util/cover_cache.h
+    
+    # Resources
+    ../resource/translations.qrc
 )
 
 # Find required dependencies
