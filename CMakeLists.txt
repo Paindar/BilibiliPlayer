@@ -12,9 +12,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools Concurrent)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools Concurrent)
 
-# Set the translation files path
-set(TS_FILES    resource/lang/BilibiliPlayer_zh_CN.ts
-                resource/lang/BilibiliPlayer_en_US.ts)
+# Translation files for Qt's i18n system
+# - en_US.ts: English source strings (auto-extracted by lupdate during build)
+# - zh_CN.ts: Chinese Simplified translations
+# CMake automatically runs lupdate to extract strings and lrelease to compile .qm files
+set(TS_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/resource/lang/en_US.ts
+                ${CMAKE_CURRENT_SOURCE_DIR}/resource/lang/zh_CN.ts)
 
 
 enable_testing()
