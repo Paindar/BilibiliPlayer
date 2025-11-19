@@ -97,11 +97,8 @@ set(PROJECT_SOURCES
     util/md5.cpp
     util/urlencode.h
     util/urlencode.cpp
-    util/cover_cache.cpp
     util/cover_cache.h
-    
-    # Resources
-    ../resource/translations.qrc
+    util/cover_cache.cpp
 )
 
 # Find required dependencies
@@ -112,7 +109,6 @@ find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(magic_enum REQUIRED)
-find_package(taglib REQUIRED)
 
 # Create the executable
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -150,7 +146,6 @@ target_link_libraries(BilibiliPlayer PRIVATE
     spdlog::spdlog
     fmt::fmt
     magic_enum::magic_enum
-    taglib::tag
     # Windows-specific libraries for WASAPI
     ole32
     oleaut32
