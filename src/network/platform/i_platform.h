@@ -20,7 +20,14 @@ namespace network
         // Future platforms can be added here
         All = 0x7FFFFFFF
     };
-    const static std::string getPlatformName(PlatformType type) {
+    
+    /**
+     * @brief Convert PlatformType enum to display string (for UI and serialization)
+     * 
+     * Returns QString for UI use, or can be converted to std::string via toStdString()
+     * Phase 3c (US3): Will wrap return values with tr() for localization
+     */
+    inline QString getPlatformName(PlatformType type) {
         switch (type) {
             case Bilibili:
                 return "Bilibili";
@@ -56,7 +63,7 @@ namespace network
         QString coverUrl;       // Network URL for cover image. If it's a local file, it will be empty and use coverImg instead.
         QString coverImg;       // Filename for cover in local storage(not including tmp/cover/ path)
         QString description;    // Audio description, only assigned when it's from network.
-        
+
         QString interfaceData;  // Reserved for raw interface data storage
     };
     /**

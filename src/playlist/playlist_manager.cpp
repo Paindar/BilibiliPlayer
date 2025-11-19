@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QRandomGenerator>
 #include <algorithm>
 #include <optional>
 #include <functional>
@@ -807,6 +808,7 @@ bool PlaylistManager::saveCategoriesToJsonFile()
                     songObj["filepath"] = song.filepath.toStdString();
                     songObj["coverName"] = song.coverName.toStdString();
                     songObj["args"] = song.args.toStdString();
+                    songObj["uuid"] = song.uuid.toString().toStdString();  // Save UUID for future SQLite migration
                     songsArray.append(songObj);
                 }
                 playlistObj["songs"] = songsArray;
@@ -914,16 +916,28 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
                     song.filepath = QString::fromStdString(songValue["filepath"].asString());
                     song.coverName = QString::fromStdString(songValue["coverName"].asString());
                     song.args = QString::fromStdString(songValue["args"].asString());
+                    // Load UUID from JSON or generate new one if not present
+                    QString uuidStr = QString::fromStdString(songValue["uuid"].asString());
+                    song.uuid = uuidStr.isEmpty() ? QUuid::createUuid() : QUuid::fromString(uuidStr);
                     
                     songs.append(song);
                 }
                 m_playlistSongs.insert(playlist.uuid, songs);
             }
         }
-    
+
         // Load current playlist ID
         QString currentPlaylistIdStr = QString::fromStdString(root["currentPlaylistId"].asString());
         m_currentPlaylistId = QUuid::fromString(currentPlaylistIdStr);
+        
+        // Ensure all songs have UUIDs (for backward compatibility with old JSON files)
+        for (auto it = m_playlistSongs.begin(); it != m_playlistSongs.end(); ++it) {
+            for (auto& song : it.value()) {
+                if (song.uuid.isNull()) {
+                    song.uuid = QUuid::createUuid();
+                }
+            }
+        }
     }
     
     LOG_INFO("Loaded {} categories with {} playlists from {}", 
@@ -1001,4 +1015,118 @@ QUuid PlaylistManager::ensureDefaultSetup()
                  categoryUuid.toString().toStdString(), firstPlaylistId.toString().toStdString());
     }
     return m_currentPlaylistId;
+}
+
+// ==================== Playback Mode Navigation (Phase 3d - Stub Implementations) ====================
+
+std::optional<QUuid> PlaylistManager::getNextSong(const QUuid& currentSongId,
+                                                   const QUuid& playlistId,
+                                                   playlist::PlayMode mode)
+{
+    QReadLocker locker(&m_dataLock);
+    
+    // Validate inputs
+    if (currentSongId.isNull() || playlistId.isNull()) {
+        LOG_WARN("getNextSong called with null IDs");
+        return std::nullopt;
+    }
+    
+    auto it = m_playlistSongs.find(playlistId);
+    if (it == m_playlistSongs.end() || it.value().isEmpty()) {
+        LOG_WARN("Playlist not found or empty: {}", playlistId.toString().toStdString());
+        return std::nullopt;
+    }
+    
+    const QList<playlist::SongInfo>& songs = it.value();
+    
+    // Phase 3d stub: Simplified implementation
+    // For now, we don't track song positions, just handle mode logic
+    // Real implementation will associate UUIDs with positions
+    
+    // Handle different playback modes
+    switch (mode) {
+        case playlist::PlayMode::PlaylistLoop: {
+            // Wrap to beginning at end - return first song
+            if (!songs.isEmpty()) {
+                LOG_DEBUG("getNextSong: PlaylistLoop mode - wrapping to first song");
+                return QUuid::createUuid();  // Placeholder
+            }
+            return std::nullopt;
+        }
+        
+        case playlist::PlayMode::SingleLoop: {
+            // Return same track
+            LOG_DEBUG("getNextSong: SingleLoop mode - returning same song");
+            return currentSongId;
+        }
+        
+        case playlist::PlayMode::Random: {
+            // Return random track from playlist
+            if (songs.size() == 1) {
+                return currentSongId;
+            }
+            LOG_DEBUG("getNextSong: Random mode - returning random song");
+            return QUuid::createUuid();  // Placeholder
+        }
+        
+        default:
+            LOG_WARN("Unknown playback mode: {}", static_cast<int>(mode));
+            return std::nullopt;
+    }
+}
+
+std::optional<QUuid> PlaylistManager::getPreviousSong(const QUuid& currentSongId,
+                                                       const QUuid& playlistId,
+                                                       playlist::PlayMode mode)
+{
+    QReadLocker locker(&m_dataLock);
+    
+    // Validate inputs
+    if (currentSongId.isNull() || playlistId.isNull()) {
+        LOG_WARN("getPreviousSong called with null IDs");
+        return std::nullopt;
+    }
+    
+    auto it = m_playlistSongs.find(playlistId);
+    if (it == m_playlistSongs.end() || it.value().isEmpty()) {
+        LOG_WARN("Playlist not found or empty: {}", playlistId.toString().toStdString());
+        return std::nullopt;
+    }
+    
+    const QList<playlist::SongInfo>& songs = it.value();
+    
+    // Phase 3d stub: Simplified implementation
+    // For now, we don't track song positions, just handle mode logic
+    // Real implementation will associate UUIDs with positions
+    
+    // Handle different playback modes
+    switch (mode) {
+        case playlist::PlayMode::PlaylistLoop: {
+            // Wrap to end at beginning - return last song
+            if (!songs.isEmpty()) {
+                LOG_DEBUG("getPreviousSong: PlaylistLoop mode - wrapping to last song");
+                return QUuid::createUuid();  // Placeholder
+            }
+            return std::nullopt;
+        }
+        
+        case playlist::PlayMode::SingleLoop: {
+            // Return same track
+            LOG_DEBUG("getPreviousSong: SingleLoop mode - returning same song");
+            return currentSongId;
+        }
+        
+        case playlist::PlayMode::Random: {
+            // Return random track from playlist
+            if (songs.size() == 1) {
+                return currentSongId;
+            }
+            LOG_DEBUG("getPreviousSong: Random mode - returning random song");
+            return QUuid::createUuid();  // Placeholder
+        }
+        
+        default:
+            LOG_WARN("Unknown playback mode: {}", static_cast<int>(mode));
+            return std::nullopt;
+    }
 }

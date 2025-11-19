@@ -21,10 +21,9 @@ namespace playlist
         QString filepath;   // Local file path, empty if it hasn't been downloaded
         QString coverName;  // Local cover image filename (not including tmp/cover/ path), empty if not available
         QString args;       // Additional arguments or metadata for interface
+        QUuid uuid;         // Unique identifier for the song (for SQLite storage in Phase 2)
         bool operator==(const SongInfo& other) const {
-            return title == other.title &&
-                   uploader == other.uploader &&
-                   platform == other.platform;
+            return uuid == other.uuid;
         }
     };
 

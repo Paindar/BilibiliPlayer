@@ -291,7 +291,8 @@ void SearchPage::onResultItemDoubleClicked(QListWidgetItem* item)
         .platform = static_cast<int>(result.platform),
         .duration = result.duration,
         .coverName = result.coverImg,  // Use coverImg from search result
-        .args = result.interfaceData
+        .args = result.interfaceData,
+        .uuid = QUuid::createUuid()
     };
     bool success = PLAYLIST_MANAGER->addSongToPlaylist(song, currentPlaylistUuid);
     if (!success) {

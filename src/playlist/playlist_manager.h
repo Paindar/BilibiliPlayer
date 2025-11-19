@@ -17,6 +17,20 @@ class QTimer;
 class ConfigManager;
 
 /**
+ * @brief Enumeration for playlist item deletion behavior
+ * 
+ * Defines how the system should behave when a playlist item is deleted:
+ * - PlayNext: Automatically play the next item in the list
+ * - Stop: Stop playback (useful when current track is deleted)
+ * - Pause: Pause playback and update to next available track
+ */
+enum class DeletionBehavior {
+    PlayNext = 0,    // Play next item automatically
+    Stop = 1,        // Stop playback entirely
+    Pause = 2        // Pause playback (resume from next item)
+};
+
+/**
  * Playlist Manager - manages category and playlist data using workspace-relative paths
  * Each category and playlist has unique QUuid identifier for safe management
  * All file operations are constrained to workspace directory
@@ -67,6 +81,52 @@ public:
     // Current playlist management
     QUuid getCurrentPlaylist();
     void setCurrentPlaylist(const QUuid& playlistId);
+    
+    // Playback mode management (Phase 3d)
+
+    
+    // Playback navigation with mode support (Phase 3d - stub implementations)
+    /**
+     * Get the next song to play based on current playback mode
+     * 
+     * @param currentSongId UUID of currently playing song
+     * @param playlistId UUID of current playlist
+     * @param mode Playback mode to use for navigation
+     * @return Optional UUID of next song, empty if at end (depends on mode)
+     * 
+     * Modes:
+     * - Normal: Next track in sequence, empty at end
+     * - Repeat: Wraps to beginning at end
+     * - RepeatOne: Returns same track
+     * - Shuffle: Returns next in shuffled order
+     * - Random: Returns random track from playlist
+     * 
+     * Phase 3d (US4): Implement actual navigation logic
+     */
+    std::optional<QUuid> getNextSong(const QUuid& currentSongId, 
+                                      const QUuid& playlistId,
+                                      playlist::PlayMode mode);
+    
+    /**
+     * Get the previous song to play based on current playback mode
+     * 
+     * @param currentSongId UUID of currently playing song
+     * @param playlistId UUID of current playlist
+     * @param mode Playback mode to use for navigation
+     * @return Optional UUID of previous song, empty if at beginning (depends on mode)
+     * 
+     * Modes:
+     * - Normal: Previous track in sequence, empty at start
+     * - Repeat: Wraps to end at beginning
+     * - RepeatOne: Returns same track
+     * - Shuffle: Returns previous in shuffled order
+     * - Random: Returns random track from playlist
+     * 
+     * Phase 3d (US4): Implement actual navigation logic
+     */
+    std::optional<QUuid> getPreviousSong(const QUuid& currentSongId,
+                                          const QUuid& playlistId,
+                                          playlist::PlayMode mode);
 signals:
     void categoryAdded(const playlist::CategoryInfo& category);
     void categoryRemoved(const QUuid& categoryId);
@@ -80,6 +140,30 @@ signals:
     void playlistSongsChanged(const QUuid& playlistId);
     void categoriesLoaded(int categoryCount, int playlistCount);
     void currentPlaylistChanged(const QUuid& playlistId);
+    
+    /**
+     * @brief Signal emitted when a song is about to be deleted from the current playlist
+     * 
+     * Handlers can use this to:
+     * - Update playback state (stop/pause)
+     * - Switch to next track if currently playing
+     * - Update UI to show deletion happening
+     * 
+     * Phase 3d (US4): Use this signal to implement deletion-aware playback
+     */
+    void currentSongAboutToDelete(const QUuid& songId, const QUuid& playlistId);
+    
+    /**
+     * @brief Signal emitted after a song is deleted from the current playlist
+     * 
+     * Handlers can use this to:
+     * - Resume playback from next track
+     * - Handle edge case where current was the only track
+     * - Validate playback state after deletion
+     * 
+     * Phase 3d (US4): Implement deletion recovery logic based on this signal
+     */
+    void currentSongDeleted(const QUuid& deletedSongId, const QUuid& nextSongId, const QUuid& playlistId);
 
 private slots:
     void onAutoSaveTimer();
