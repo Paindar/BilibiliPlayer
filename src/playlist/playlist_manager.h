@@ -179,6 +179,11 @@ private:
     QUuid getPlaylistCategoryId(const QUuid& playlistId) const;
     QString generateStreamingFilepath(const playlist::SongInfo& song) const;
     
+    // UUID index maintenance methods (O(1) lookups)
+    void rebuildSongUuidIndex(const QUuid& playlistId);
+    void updateSongUuidIndex(const QUuid& playlistId);
+    std::optional<int> findSongIndexByUuid(const QUuid& playlistId, const QUuid& songUuid) const;
+    
     // Default setup helpers
     QUuid ensureDefaultSetup();
     
@@ -194,6 +199,10 @@ private:
     // Relationship mappings
     QHash<QUuid, QList<QUuid>> m_categoryPlaylists; // CategoryId -> List of PlaylistIds
     QHash<QUuid, QList<playlist::SongInfo>> m_playlistSongs;
+    
+    // UUID indexing for O(1) lookups instead of O(n) linear search
+    // Structure: PlaylistId -> (SongUuid -> Index in songs list)
+    QHash<QUuid, QHash<QUuid, int>> m_songUuidIndex;
     
     QTimer* m_autoSaveTimer;
     QUuid m_currentPlaylistId;

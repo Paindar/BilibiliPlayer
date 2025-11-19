@@ -417,6 +417,11 @@ bool PlaylistManager::addSongToPlaylist(const playlist::SongInfo& song, const QU
     }
     
     m_playlistSongs[playlistId].append(songWithFilepath);
+    
+    // Update UUID index with new song (O(1) append)
+    int newIndex = m_playlistSongs[playlistId].size() - 1;
+    m_songUuidIndex[playlistId][songWithFilepath.uuid] = newIndex;
+    
     auto playlistIt = m_playlists.find(playlistId);
     QString playlistName = (playlistIt != m_playlists.end()) ? playlistIt.value().name : "Unknown";
     
@@ -588,6 +593,10 @@ bool PlaylistManager::removeSongFromPlaylist(const playlist::SongInfo& song, con
         
         // Remove the song
         songs.erase(it);
+        
+        // Rebuild UUID index after deletion (songs list changed)
+        updateSongUuidIndex(playlistId);
+        
         auto playlistIt = m_playlists.find(playlistId);
         locker.unlock();
         
@@ -967,6 +976,11 @@ bool PlaylistManager::loadCategoriesFromJsonFile()
                 }
             }
         }
+        
+        // Build UUID indices for fast O(1) lookups
+        for (auto it = m_playlistSongs.begin(); it != m_playlistSongs.end(); ++it) {
+            rebuildSongUuidIndex(it.key());
+        }
     }
     
     LOG_INFO("Loaded {} categories with {} playlists from {}", 
@@ -1068,23 +1082,15 @@ std::optional<QUuid> PlaylistManager::getNextSong(const QUuid& currentSongId,
     
     const QList<playlist::SongInfo>& songs = it.value();
     
-    // Find current song index by UUID
-    int currentIndex = -1;
-    for (int i = 0; i < songs.size(); ++i) {
-        const auto& song = songs[i];
-        if (song.uuid == currentSongId) {
-            currentIndex = i;
-            break;
-        }
-    }
-    
-    // Current song not found in playlist
-    if (currentIndex == -1) {
+    // Use indexed lookup for O(1) performance on large playlists
+    auto indexOpt = findSongIndexByUuid(playlistId, currentSongId);
+    if (!indexOpt.has_value()) {
         LOG_WARN("Current song {} not found in playlist {}", 
                  currentSongId.toString().toStdString(), 
                  playlistId.toString().toStdString());
         return std::nullopt;
     }
+    int currentIndex = indexOpt.value();
     
     // Handle different playback modes
     switch (mode) {
@@ -1139,23 +1145,15 @@ std::optional<QUuid> PlaylistManager::getPreviousSong(const QUuid& currentSongId
     
     const QList<playlist::SongInfo>& songs = it.value();
     
-    // Find current song index by UUID
-    int currentIndex = -1;
-    for (int i = 0; i < songs.size(); ++i) {
-        const auto& song = songs[i];
-        if (song.uuid == currentSongId) {
-            currentIndex = i;
-            break;
-        }
-    }
-    
-    // Current song not found in playlist
-    if (currentIndex == -1) {
+    // Use indexed lookup for O(1) performance on large playlists
+    auto indexOpt = findSongIndexByUuid(playlistId, currentSongId);
+    if (!indexOpt.has_value()) {
         LOG_WARN("Current song {} not found in playlist {}", 
                  currentSongId.toString().toStdString(), 
                  playlistId.toString().toStdString());
         return std::nullopt;
     }
+    int currentIndex = indexOpt.value();
     
     // Handle different playback modes
     switch (mode) {
@@ -1188,4 +1186,71 @@ std::optional<QUuid> PlaylistManager::getPreviousSong(const QUuid& currentSongId
             LOG_WARN("Unknown playback mode: {}", static_cast<int>(mode));
             return std::nullopt;
     }
+}
+
+// UUID Index Maintenance - O(1) lookup optimization
+void PlaylistManager::rebuildSongUuidIndex(const QUuid& playlistId)
+{
+    QReadLocker locker(&m_dataLock);
+    
+    auto it = m_playlistSongs.find(playlistId);
+    if (it == m_playlistSongs.end()) {
+        LOG_DEBUG("Playlist not found for UUID index rebuild: {}", playlistId.toString().toStdString());
+        return;
+    }
+    
+    const QList<playlist::SongInfo>& songs = it.value();
+    QHash<QUuid, int>& index = m_songUuidIndex[playlistId];
+    index.clear();
+    
+    for (int i = 0; i < songs.size(); ++i) {
+        index.insert(songs[i].uuid, i);
+    }
+    
+    LOG_DEBUG("Rebuilt UUID index for playlist {}: {} songs indexed", 
+              playlistId.toString().toStdString(), songs.size());
+}
+
+void PlaylistManager::updateSongUuidIndex(const QUuid& playlistId)
+{
+    // Simpler approach: just rebuild the index for this playlist
+    rebuildSongUuidIndex(playlistId);
+}
+
+std::optional<int> PlaylistManager::findSongIndexByUuid(const QUuid& playlistId, const QUuid& songUuid) const
+{
+    // Try indexed lookup first (O(1))
+    auto indexIt = m_songUuidIndex.find(playlistId);
+    if (indexIt != m_songUuidIndex.end()) {
+        const QHash<QUuid, int>& index = indexIt.value();
+        auto idxIt = index.find(songUuid);
+        if (idxIt != index.end()) {
+            int cachedIndex = idxIt.value();
+            
+            // Verify the cached index is still valid (playlist could have changed)
+            auto songsIt = m_playlistSongs.find(playlistId);
+            if (songsIt != m_playlistSongs.end()) {
+                const QList<playlist::SongInfo>& songs = songsIt.value();
+                if (cachedIndex >= 0 && cachedIndex < songs.size() && 
+                    songs[cachedIndex].uuid == songUuid) {
+                    return cachedIndex; // Cache hit!
+                }
+            }
+        }
+    }
+    
+    // Fallback to linear search if cache miss or not indexed yet
+    auto songsIt = m_playlistSongs.find(playlistId);
+    if (songsIt == m_playlistSongs.end()) {
+        return std::nullopt;
+    }
+    
+    const QList<playlist::SongInfo>& songs = songsIt.value();
+    for (int i = 0; i < songs.size(); ++i) {
+        if (songs[i].uuid == songUuid) {
+            return i;
+        }
+    }
+    
+    return std::nullopt;
 }
