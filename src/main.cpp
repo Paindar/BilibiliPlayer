@@ -87,13 +87,17 @@ int main(int argc, char *argv[])
     // so startup isn't blocked by optional initialization. This is non-invasive
     // — translator variable remains in-scope for the lifetime of the app.
     QTimer::singleShot(0, [&a, &translator]() {
-        const QStringList uiLanguages = QLocale::system().uiLanguages();
-        for (const QString &locale : uiLanguages) {
-            const QString baseName = "BilibiliPlayer_" + QLocale(locale).name();
-            if (translator.load(":/i18n/" + baseName)) {
-                a.installTranslator(&translator);
-                break;
-            }
+        // Load translation based on system locale
+        QString translationPath = QCoreApplication::applicationDirPath() + "/../resource/lang";
+        QString locale = QLocale::system().name();  // e.g., "en_US" or "zh_CN"
+        
+        // Try to load the appropriate .qm file
+        if (translator.load("BilibiliPlayer_" + locale, translationPath) || 
+            translator.load(locale + ".qm", translationPath)) {
+            a.installTranslator(&translator);
+            LOG_INFO("Loaded translation: {}", (translationPath + "/" + locale + ".qm").toStdString());
+        } else {
+            LOG_DEBUG("No translation file found for locale: {}", locale.toStdString());
         }
 
         // Log supported image formats (non-critical diagnostic)
